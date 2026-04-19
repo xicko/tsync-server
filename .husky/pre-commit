@@ -1,0 +1,3 @@
+npx tsc --noEmit
+
+echo "TODO: Husky pre-commit script"
