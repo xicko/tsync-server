@@ -293,9 +293,12 @@ export class TasksService implements OnModuleInit {
         const windowsMacAddress = prevDevice?.windowsConfig?.macAddress;
 
         return {
+          // Tailscale API data
           ...device,
 
+          // tsync-specific data
           isHost: device.addresses[0] === process.env.HOST_IP,
+          battery: prevDevice?.battery,
 
           androidConfig: device.os === 'android' ? {
             ...prevDevice?.androidConfig,

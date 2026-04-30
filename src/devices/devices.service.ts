@@ -148,8 +148,6 @@ export class DevicesService {
       if (os === 'android') {
         if (typeof body.level !== 'number' || typeof body.isPlugged !== 'boolean') return { success: false };
 
-        // if (!device.androidConfig) device.androidConfig = {};
-
         const timestampMs = Date.now();
         device.battery = {
           timestamp: body.timestamp ?? timestampMs,
