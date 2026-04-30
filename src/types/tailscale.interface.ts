@@ -69,11 +69,7 @@ export interface TailscaleDevice {
     adb?: {
       port?: number;
     };
-    battery?: {
-      level: number;
-      plugged: boolean;
-      timestamp: number;
-    };
+    battery?: BatteryStatus;
   };
 
   windowsConfig?: {
@@ -83,4 +79,10 @@ export interface TailscaleDevice {
 
 export interface TailscaleDevicesResponse {
   devices: TailscaleDevice[];
+}
+
+export interface BatteryStatus {
+  level: number;
+  plugged: boolean;
+  timestamp: number;
 }

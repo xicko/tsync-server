@@ -1,6 +1,9 @@
+/* eslint-disable prettier/prettier */
+/* eslint-disable no-empty */
 import { Injectable, Logger } from '@nestjs/common';
 import type { Request } from 'express';
 import {
+  BatteryStatus,
   TailscaleDevice,
   TailscaleDevicesResponse,
 } from '../types/tailscale.interface';
@@ -91,7 +94,10 @@ export class DevicesService {
     return { success: true };
   }
 
-  async setWindowsMacAddress(deviceId: string, macAddress: string) {
+  async setWindowsMacAddress(
+    deviceId: string,
+    macAddress: string,
+  ): Promise<{ success: boolean }> {
     try {
       const redisClient = await getRedisClient();
       const key = `devices`;
@@ -111,6 +117,55 @@ export class DevicesService {
 
       await redisClient.set(key, JSON.stringify(devices));
       return { success: true };
+    } catch (error) {
+      this.logger.error(error);
+      return { success: false };
+    }
+  }
+
+  async updateBatteryStatus(
+    req: Request,
+    deviceId: string,
+    body: BatteryStatus,
+  ): Promise<{ success: boolean }> {
+    try {
+      const redisClient = await getRedisClient();
+      const key = `devices`;
+
+      const devicesRaw = await redisClient.get(key);
+      if (!devicesRaw || typeof devicesRaw !== 'string') {
+        return { success: false };
+      }
+      let devices = JSON.parse(devicesRaw) as TailscaleDevice[];
+      const device = devices?.find((d) => d.id === deviceId) ?? null;
+      const requestIp = getClientIp(req);
+      if (!device || device.addresses[0] !== requestIp) {
+        return { success: false };
+      }
+
+      const os = device.os.toLowerCase() as 'linux' | 'android' | 'windows' | 'ios' | 'macos';
+
+      if (os === 'android') {
+        if (typeof body.level !== 'number' || typeof body.plugged !== 'boolean') return { success: false };
+
+        if (!device.androidConfig) device.androidConfig = {};
+
+        const timestampMs = Date.now();
+        device.androidConfig.battery = {
+          timestamp: body.timestamp ?? timestampMs,
+          level: body.level,
+          plugged: body.plugged
+        };
+        devices = devices.map((d) => (d.id === deviceId ? device : d));
+        await redisClient.set(key, JSON.stringify(devices));
+
+        return { success: true };
+      }
+      else if (os === 'ios') {
+        // TODO
+      }
+
+      return { success: false };
     } catch (error) {
       this.logger.error(error);
       return { success: false };
