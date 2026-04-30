@@ -21,7 +21,7 @@ export class AdbService {
     }
   }
 
-  async setAdbDeviceIdentifier(deviceId: string, identifier: string | null) {
+  async setAdbDeviceIdentifier(deviceId: string, identifier: number | null) {
     try {
       const redisClient = await getRedisClient();
       const key = `devices`;
@@ -35,7 +35,10 @@ export class AdbService {
       if (!device) {
         return { success: false };
       }
-      device.adbIdentifier = identifier || undefined;
+      if (!device.androidConfig) device.androidConfig = {};
+      if (!device.androidConfig.adb) device.androidConfig.adb = {};
+      device.androidConfig.adb.port =
+        identifier !== null ? identifier : undefined;
       devices = devices.map((d) => (d.id === deviceId ? device : d));
 
       await redisClient.set(key, JSON.stringify(devices));

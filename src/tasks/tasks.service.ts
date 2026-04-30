@@ -20,6 +20,7 @@ import { Model } from 'mongoose';
 import { SheetRow } from 'src/schemas/sheet-row.schema';
 import { CronConfig } from 'src/schemas/cron-config.schema';
 import { CronLog } from 'src/schemas/cron-log.schema';
+import { DevicesService } from 'src/devices/devices.service';
 
 dayjs.extend(duration);
 
@@ -38,6 +39,7 @@ export class TasksService implements OnModuleInit {
   constructor(
     private readonly gateway: EventsGateway,
     private readonly sheetsService: SheetsService,
+    private readonly devicesService: DevicesService,
     private readonly telegramService: TelegramService,
     @InjectModel(SheetRow.name) private sheetRowModel: Model<SheetRow>,
     private readonly schedulerRegistry: SchedulerRegistry,
@@ -283,23 +285,34 @@ export class TasksService implements OnModuleInit {
       : [];      
 
     if (resJson.devices) {
-      const modifiedDevices = resJson.devices.map((device) => {
+      const modifiedDevices: TailscaleDevice[] = resJson.devices.map((device) => {
         const prevDevice = prevMap?.get(device.id);
 
-        const adbIdentifier = prevDevice?.adbIdentifier ?? connectedAdbDevicesParsed.find((address) => device.addresses[0] === address.split(':')[0]);
-        const windowsMacAddress = prevDevice?.windowsMacAddress;
+        const connectedMatch = connectedAdbDevicesParsed.find((address) => device.addresses[0] === address.split(':')[0]);
+        const adbPort = prevDevice?.androidConfig?.adb?.port ?? (connectedMatch ? Number(connectedMatch.split(':')[1]) : undefined);
+        const windowsMacAddress = prevDevice?.windowsConfig?.macAddress;
 
         return {
           ...device,
 
           isHost: device.addresses[0] === process.env.HOST_IP,
 
-          adbIdentifier: device.os === 'android' ? adbIdentifier : undefined,
-          windowsMacAddress: device.os === 'windows' ? windowsMacAddress : undefined,
+          androidConfig: device.os === 'android' ? {
+            ...prevDevice?.androidConfig,
+            adb: {
+              ...prevDevice?.androidConfig?.adb,
+              port: adbPort,
+            },
+          } : undefined,
+
+          windowsConfig: device.os === 'windows' ? {
+            ...prevDevice?.windowsConfig,
+            macAddress: windowsMacAddress,
+          } : undefined,
         };
       });
       
-      return { devices: modifiedDevices } as TailscaleDevicesResponse;
+      return { devices: modifiedDevices };
     }
 
     return {
@@ -352,19 +365,24 @@ export class TasksService implements OnModuleInit {
   }
 
   // ADB AUTOCONNECT
-  @Cron(CronExpression.EVERY_HOUR)
+  @Cron(CronExpression.EVERY_10_MINUTES)
   async handleAdbAutoConnectCron() {
-    const res1 = await runCommandSpawn('adb', [
-      'connect',
-      process.env.ADB_ADDRESS || '',
-    ]);
-    const res2 = await runCommandSpawn('sh', [
-      './src/scripts/shell/adb_connect.sh',
-      process.env.ADB_ADDRESS2 || '',
-    ]);
-    
-    this.logger.log(res1);
-    this.logger.log(res2);
+    const devicesRes = await this.devicesService.getDevices();
+    const addresses = devicesRes.devices.map((d) => {
+      const addr = d.addresses[0];
+      const port = d.androidConfig?.adb?.port;
+      if (!addr || !port) return null;
+      return `${addr}:${port}`;
+    }).filter((a) => a !== null);
+
+    this.logger.debug(`Found ${addresses.length} devices to connect`);
+
+    for (const address of addresses) {
+      void runCommandSpawn('sh', [
+        './src/scripts/shell/adb_connect_once.sh',
+        address,
+      ]);
+    }
   }
 
   // ADB DEVICES
