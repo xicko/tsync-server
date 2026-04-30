@@ -146,15 +146,15 @@ export class DevicesService {
       const os = device.os.toLowerCase() as 'linux' | 'android' | 'windows' | 'ios' | 'macos';
 
       if (os === 'android') {
-        if (typeof body.level !== 'number' || typeof body.plugged !== 'boolean') return { success: false };
+        if (typeof body.level !== 'number' || typeof body.isPlugged !== 'boolean') return { success: false };
 
-        if (!device.androidConfig) device.androidConfig = {};
+        // if (!device.androidConfig) device.androidConfig = {};
 
         const timestampMs = Date.now();
-        device.androidConfig.battery = {
+        device.battery = {
           timestamp: body.timestamp ?? timestampMs,
           level: body.level,
-          plugged: body.plugged
+          isPlugged: body.isPlugged
         };
         devices = devices.map((d) => (d.id === deviceId ? device : d));
         await redisClient.set(key, JSON.stringify(devices));

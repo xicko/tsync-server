@@ -65,11 +65,12 @@ export interface TailscaleDevice {
   isHost?: boolean;
   isThisDevice?: boolean;
 
+  battery?: BatteryStatus;
+
   androidConfig?: {
     adb?: {
       port?: number;
     };
-    battery?: BatteryStatus;
   };
 
   windowsConfig?: {
@@ -83,6 +84,6 @@ export interface TailscaleDevicesResponse {
 
 export interface BatteryStatus {
   level: number;
-  plugged: boolean;
+  isPlugged: boolean;
   timestamp: number;
 }
