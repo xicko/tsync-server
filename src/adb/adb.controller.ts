@@ -13,7 +13,7 @@ export class AdbController {
   @Patch('/devices/:tailscaleId/identifier')
   async setAdbDeviceIdentifier(
     @Param('tailscaleId') tailscaleId: string,
-    @Body() body: { identifier: number },
+    @Body() body: { identifier: string },
   ) {
     return await this.adbService.setAdbDeviceIdentifier(
       tailscaleId,
