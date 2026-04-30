@@ -12,8 +12,9 @@ import { OneSignal } from '../utils/onesignal';
 export class DevicesService {
   private readonly logger = new Logger(DevicesService.name);
 
-  async getDevices(req: Request): Promise<TailscaleDevicesResponse> {
-    const ip = getClientIp(req);
+  async getDevices(req?: Request): Promise<TailscaleDevicesResponse> {
+    let ip: string | null = null;
+    if (req) ip = getClientIp(req);
     const redisClient = await getRedisClient();
     const devices = await redisClient.get('devices');
     if (!devices || typeof devices !== 'string') {
@@ -21,7 +22,7 @@ export class DevicesService {
     }
     const parsed = JSON.parse(devices) as TailscaleDevice[];
     const mod = parsed.map((device) => {
-      if (device.addresses[0] === ip) device.isThisDevice = true;
+      if (ip !== null && device.addresses[0] === ip) device.isThisDevice = true;
       return device;
     });
     return { devices: mod };
@@ -34,9 +35,10 @@ export class DevicesService {
 
     const parsed = JSON.parse(devices) as TailscaleDevice[];
     const device = parsed.find((device) => device.id === deviceId);
-    if (!device?.windowsMacAddress) return { success: false };
+    if (!device?.windowsConfig?.macAddress) return { success: false };
 
-    const rawMac = device.windowsMacAddress;
+    const rawMac = device.windowsConfig.macAddress;
+    if (!rawMac) return { success: false };
     const mac = String(rawMac).toLowerCase().replace(/:/g, '');
 
     const key = `wol:${mac}`;
@@ -100,10 +102,11 @@ export class DevicesService {
       }
       let devices = JSON.parse(devicesRaw) as TailscaleDevice[];
       const device = devices.find((d) => d.id === deviceId);
-      if (!device) {
+      if (!device || device?.os !== 'windows') {
         return { success: false };
       }
-      device.windowsMacAddress = macAddress || undefined;
+      if (!device.windowsConfig) device.windowsConfig = {};
+      device.windowsConfig.macAddress = macAddress || undefined;
       devices = devices.map((d) => (d.id === deviceId ? device : d));
 
       await redisClient.set(key, JSON.stringify(devices));

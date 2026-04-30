@@ -25,12 +25,16 @@ import { ShellEventPayload } from 'src/types/shell.interface';
 async function getAdbIdentifier(tailscaleDeviceId: string): Promise<string | null> {
   const redisClient = await getRedisClient();
   const devices = await redisClient.get('devices');
-  if (devices && typeof devices === 'string') {
-    const devicesParsed: TailscaleDevice[] = JSON.parse(devices);
-    const device = devicesParsed.find((d) => d.id === tailscaleDeviceId);
-    if (device) return device.adbIdentifier || null;
-  }
-  return null;
+  if (!devices || typeof devices !== 'string') return null;
+
+  const devicesParsed: TailscaleDevice[] = JSON.parse(devices);
+  const device = devicesParsed.find((d) => d.id === tailscaleDeviceId);
+
+  const address = device?.addresses[0];
+  const port = device?.androidConfig?.adb?.port;
+  if (!port || !address) return null;
+  
+  return `${address}:${port}`;
 }
 
 @WebSocketGateway({

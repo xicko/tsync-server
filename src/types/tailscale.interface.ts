@@ -1,3 +1,4 @@
+/* eslint-disable prettier/prettier */
 export interface TailscaleClientConnectivity {
   endpoints?: string[];
   mappingVariesByDestIP?: boolean;
@@ -64,8 +65,20 @@ export interface TailscaleDevice {
   isHost?: boolean;
   isThisDevice?: boolean;
 
-  adbIdentifier?: string;
-  windowsMacAddress?: string;
+  androidConfig?: {
+    adb?: {
+      port?: number;
+    };
+    battery?: {
+      level: number;
+      plugged: boolean;
+      timestamp: number;
+    };
+  };
+
+  windowsConfig?: {
+    macAddress?: string;
+  };
 }
 
 export interface TailscaleDevicesResponse {
