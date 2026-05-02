@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Param, Patch, Post, Req } from '@nestjs/common';
 import { DevicesService } from './devices.service';
 import type { Request } from 'express';
+import type { BatteryStatus } from 'src/types/tailscale.interface';
 
 @Controller('devices')
 export class DevicesController {
@@ -24,6 +25,20 @@ export class DevicesController {
     return await this.devicesService.setWindowsMacAddress(
       tailscaleId,
       body.macAddress,
+    );
+  }
+
+  @Patch('/:tailscaleId/update-battery-status')
+  async updateBatteryStatus(
+    @Req() req: Request,
+    @Param('tailscaleId') tailscaleId: string,
+    @Body()
+    body: BatteryStatus,
+  ) {
+    return await this.devicesService.updateBatteryStatus(
+      req,
+      tailscaleId,
+      body,
     );
   }
 }
