@@ -84,6 +84,7 @@ export class OneSignal implements NeedsTitle, NeedsMessage, CanSend {
       included_segments: this.payload.included_segments || [
         'Active Subscriptions',
       ],
+      include_external_user_ids: this.payload.userIds,
       target_channel: 'push',
       headings: { en: this.payload.title },
       contents: { en: this.payload.message },
