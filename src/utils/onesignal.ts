@@ -1,3 +1,4 @@
+/* eslint-disable prettier/prettier */
 import { Logger } from '@nestjs/common';
 import axios from 'axios';
 import {
@@ -79,12 +80,19 @@ export class OneSignal implements NeedsTitle, NeedsMessage, CanSend {
   }
 
   public async sendPush(options?: SendPushOptions): Promise<CanSend> {
+    const sendTo = (this.payload.userIds?.length || 0) > 0 ? {
+      include_external_user_ids: this.payload.userIds,
+      included_segments: undefined,
+    }
+      :
+    {
+      included_segments: this.payload.included_segments || ['Active Subscriptions'],
+      include_external_user_ids: undefined,
+    }
+
     const payload: OneSignalPayloadType = {
       app_id: this.app_id,
-      included_segments: this.payload.included_segments || [
-        'Active Subscriptions',
-      ],
-      include_external_user_ids: this.payload.userIds,
+      ...sendTo,
       target_channel: 'push',
       headings: { en: this.payload.title },
       contents: { en: this.payload.message },

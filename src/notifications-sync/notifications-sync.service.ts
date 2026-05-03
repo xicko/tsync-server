@@ -1,0 +1,72 @@
+/* eslint-disable prettier/prettier */
+import { Injectable, Logger } from '@nestjs/common';
+import getRedisClient from '../utils/redis';
+import { TailscaleDevice } from '../types/tailscale.interface';
+import { CollectedNotification } from './types/notifications-sync.interface';
+import { Request } from 'express';
+import { getClientIp } from 'src/utils/network';
+import { OneSignal } from 'src/utils/onesignal';
+import dayjs from 'dayjs';
+
+@Injectable()
+export class NotificationsSyncService {
+  private readonly logger = new Logger(NotificationsSyncService.name);
+
+  async receiveNotification(
+    req: Request,
+    deviceId: string,
+    body: CollectedNotification,
+  ): Promise<{ success: boolean }> {
+    try {
+      const redisClient = await getRedisClient();
+      const key = `devices`;
+      const devicesRaw = await redisClient.get(key);
+      if (!devicesRaw || typeof devicesRaw !== 'string') {
+        return { success: false };
+      }
+      const devices = JSON.parse(devicesRaw) as TailscaleDevice[];
+      const device = devices.find((d) => d.id === deviceId);
+      if (!device) {
+        return { success: false };
+      }
+      
+      const reqIp = getClientIp(req);
+      if (device?.addresses[0] !== reqIp) {
+        return { success: false };
+      }
+      
+      if (body.type === 'android' && device.os === 'android') {
+        const notification = body.android;
+        this.logger.debug(notification);
+
+        const deviceName = device.name.split('.')[0] || ''
+
+        const message = `${notification.title}\n${notification.text}\n${notification.packageName}\n${dayjs(notification.timestamp).format('MM/DD - HH:mm:ss')}`;
+
+        const sendIds = devices.filter((d) => d.id !== deviceId).map((d) => d.id);
+
+        this.logger.debug(sendIds)
+
+        await OneSignal
+          .create()
+          .title(`${deviceName} (Notifications Sync)`)
+          .message(message)
+          .userIds(sendIds)
+          .sendPush({
+            isImportant: true,
+          }).then((n) => {
+            n.sendToNtfy();
+          });
+
+        // TODO: Save notifications
+      } else {
+        // TODO
+      }
+
+      return { success: true };
+    } catch (error) {
+      this.logger.error(error);
+      return { success: false };
+    }
+  }
+}
