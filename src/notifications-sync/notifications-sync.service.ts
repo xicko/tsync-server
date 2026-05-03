@@ -7,6 +7,7 @@ import { Request } from 'express';
 import { getClientIp } from 'src/utils/network';
 import { OneSignal } from 'src/utils/onesignal';
 import dayjs from 'dayjs';
+import { createHash } from 'crypto';
 
 @Injectable()
 export class NotificationsSyncService {
@@ -37,9 +38,26 @@ export class NotificationsSyncService {
       
       if (body.type === 'android' && device.os === 'android') {
         const notification = body.android;
+        const deviceName = device.name.split('.')[0] || '';
         this.logger.debug(notification);
 
-        const deviceName = device.name.split('.')[0] || ''
+        const pn = notification.packageName.toLowerCase().trim();
+        const t = notification.title.toLowerCase().trim();
+        const m = notification.text.toLowerCase().trim();
+        const it = notification.infoText.toLowerCase().trim();
+        const ct = notification.conversationTitle.toLowerCase().trim();
+        const hashKey = `${pn}|${t}|${m}|${it}|${ct}`;
+        const hash = createHash('sha256').update(hashKey).digest('hex');
+
+        const redisKey = `notification:${hash}`;
+
+        const lastNotification = await redisClient.get(redisKey);
+        if (lastNotification !== null) {
+          this.logger.debug('Duplicate notification blocked');
+          return { success: false };
+        }
+
+        await redisClient.set(redisKey, '1', { expiration: { value: 15000, type: 'PX' } });
 
         const message = `${notification.title}\n${notification.text}\n${notification.packageName}\n${dayjs(notification.timestamp).format('MM/DD - HH:mm:ss')}`;
 
