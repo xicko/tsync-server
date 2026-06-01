@@ -20,28 +20,6 @@ export class NotificationsSyncService {
     @InjectModel(NotificationsSyncLog.name) private notificationsSyncLogModel: Model<NotificationsSyncLog>,
   ) {}
 
-  onModuleInit() {
-    try {
-      const log = new this.notificationsSyncLogModel({
-        type: 'android',
-        android: {
-          packageName: 'android',
-          timestamp: Date.now(),
-          title: 'Android',
-          text: 'Android',
-          bigText: 'Android',
-          infoText: 'Android',
-          titleBig: 'Android',
-          conversationTitle: 'Android',
-          peopleList: 'Android',
-        },
-      });
-      void log.save();
-    } catch (error) {
-      this.logger.error(error);
-    }
-  }
-
   async receiveNotification(
     req: Request,
     deviceId: string,
