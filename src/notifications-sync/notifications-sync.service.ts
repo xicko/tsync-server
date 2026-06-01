@@ -160,11 +160,11 @@ export class NotificationsSyncService {
         page,
       } : {
         hasNext: res.length > limit,
-        timestamp: query.timestamp,
+        timestamp: Number(query.timestamp),
         lastItemTimestamp: (() => {
           const lastItem = res[limit];
           if (!lastItem?.timestamp) return undefined;
-          return lastItem.timestamp;
+          return Number(lastItem.timestamp);
         })(),
       }
 
