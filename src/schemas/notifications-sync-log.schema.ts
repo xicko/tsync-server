@@ -1,20 +1,30 @@
 /* eslint-disable prettier/prettier */
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument } from 'mongoose';
-import type { CollectedNotificationAndroidData, CollectedNotificationWindowsData } from 'src/notifications-sync/types/notifications-sync.interface';
+import type { CollectedNotificationAndroidData } from 'src/notifications-sync/types/notifications-sync.interface';
 
 export type NotificationsSyncLogDocument = HydratedDocument<NotificationsSyncLog>;
 
 @Schema({ timestamps: true })
 export class NotificationsSyncLog {
-  @Prop({ required: true })
-  type: 'android' | 'windows';
+  @Prop({ required: true, type: String, enum: ['android'] })
+  type: 'android';
 
-  @Prop({ required: false })
-  android: CollectedNotificationAndroidData;
-
-  @Prop({ required: false })
-  windows: CollectedNotificationWindowsData;
+  @Prop({
+    required: false,
+    type: {
+      packageName: String,
+      timestamp: Number,
+      title: String,
+      text: String,
+      bigText: String,
+      infoText: String,
+      titleBig: String,
+      conversationTitle: String,
+      peopleList: String,
+    }
+  })
+  android?: CollectedNotificationAndroidData;
 
   createdAt: Date;
   updatedAt: Date;
