@@ -20,6 +20,28 @@ export class NotificationsSyncService {
     @InjectModel(NotificationsSyncLog.name) private notificationsSyncLogModel: Model<NotificationsSyncLog>,
   ) {}
 
+  onModuleInit() {
+    try {
+      const log = new this.notificationsSyncLogModel({
+        type: 'android',
+        android: {
+          packageName: 'android',
+          timestamp: Date.now(),
+          title: 'Android',
+          text: 'Android',
+          bigText: 'Android',
+          infoText: 'Android',
+          titleBig: 'Android',
+          conversationTitle: 'Android',
+          peopleList: 'Android',
+        },
+      });
+      void log.save();
+    } catch (error) {
+      this.logger.error(error);
+    }
+  }
+
   async receiveNotification(
     req: Request,
     deviceId: string,
@@ -74,7 +96,17 @@ export class NotificationsSyncService {
 
         const log = new this.notificationsSyncLogModel({
           type: 'android',
-          android: notification,
+          android: {
+            packageName: notification.packageName,
+            timestamp: notification.timestamp,
+            title: notification.title,
+            text: notification.text,
+            bigText: notification.bigText,
+            infoText: notification.infoText,
+            titleBig: notification.titleBig,
+            conversationTitle: notification.conversationTitle,
+            peopleList: notification.peopleList,
+          },
         });
 
         await OneSignal
@@ -87,8 +119,12 @@ export class NotificationsSyncService {
           }).then((n) => {
             n.sendToNtfy();
           });
-
-        void log.save();
+        
+        try {
+          await log.save();
+        } catch (error) {
+          this.logger.error(error);
+        };
       } else {
         // TODO
       }
