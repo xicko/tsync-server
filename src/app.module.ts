@@ -13,11 +13,17 @@ import { SheetRow, SheetRowSchema } from './schemas/sheet-row.schema';
 import { CronConfig, CronConfigSchema } from './schemas/cron-config.schema';
 import { CronLog, CronLogSchema } from './schemas/cron-log.schema';
 import { CronsController } from './crons/crons.controller';
+import { NotificationsSyncModule } from './notifications-sync/notifications-sync.module';
 import * as dotenv from 'dotenv';
+import {
+  NotificationsSyncLog,
+  NotificationsSyncLogSchema,
+} from './schemas/notifications-sync-log.schema';
 dotenv.config();
 
 @Module({
   imports: [
+    NotificationsSyncModule,
     EventsModule,
     TelegramModule,
     AdbModule,
@@ -31,6 +37,7 @@ dotenv.config();
       { name: SheetRow.name, schema: SheetRowSchema },
       { name: CronConfig.name, schema: CronConfigSchema },
       { name: CronLog.name, schema: CronLogSchema },
+      { name: NotificationsSyncLog.name, schema: NotificationsSyncLogSchema },
     ]),
   ],
   controllers: [AppController, CronsController],
