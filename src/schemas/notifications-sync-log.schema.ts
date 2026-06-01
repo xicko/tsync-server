@@ -13,6 +13,9 @@ export class NotificationsSyncLog {
   @Prop({ required: true, type: String })
   tailscaleId: string;
 
+  @Prop({ required: true, type: Number })
+  timestamp: number; // sent from client
+
   @Prop({
     required: false,
     type: {

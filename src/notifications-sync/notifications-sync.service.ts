@@ -11,7 +11,7 @@ import { createHash } from 'crypto';
 import { InjectModel } from '@nestjs/mongoose';
 import { NotificationsSyncLog } from 'src/schemas/notifications-sync-log.schema';
 import { Model } from 'mongoose';
-import { PaginationResponse, ReqQuery } from 'src/types/request.interface';
+import { ReqQuery } from 'src/types/request.interface';
 
 @Injectable()
 export class NotificationsSyncService {
@@ -76,6 +76,7 @@ export class NotificationsSyncService {
         const log = new this.notificationsSyncLogModel({
           type: 'android',
           tailscaleId: device.id,
+          timestamp: notification.timestamp,
           android: {
             packageName: notification.packageName,
             timestamp: notification.timestamp,
@@ -132,6 +133,10 @@ export class NotificationsSyncService {
       success: false,
     };
 
+    let paginationMode: 'paged' | 'timestamp' = 'paged';
+
+    if (query.timestamp) paginationMode = 'timestamp';
+
     const page = Number(query?.page || 1);
     const limit = Number(query?.limit || 10);
 
@@ -139,13 +144,33 @@ export class NotificationsSyncService {
 
     try {
       const [res, total] = await Promise.all([
-        this.notificationsSyncLogModel.find().limit(limit).skip(skip),
+        this.notificationsSyncLogModel
+          .find(paginationMode === 'paged'
+            ? {}
+            : { 'timestamp': { $lt: Number(query.timestamp) } })
+          .sort({ 'timestamp': -1 })
+          .limit(paginationMode === 'paged' ? limit : (limit + 1))
+          .skip(paginationMode === 'paged' ? skip : 0),
         this.notificationsSyncLogModel.countDocuments(),
       ]);
 
+      const paginationResponse = paginationMode === 'paged' ? {
+        hasNext: (total / limit) > page,
+        hasPrev: page > 1,
+        page,
+      } : {
+        hasNext: res.length > limit,
+        timestamp: query.timestamp,
+        lastItemTimestamp: (() => {
+          const lastItem = res[limit];
+          if (!lastItem?.timestamp) return undefined;
+          return lastItem.timestamp;
+        })(),
+      }
+
       return {
         success: true,
-        data: res.map((r) => {
+        data: res.slice(0, limit).map((r) => {
           const tailscaleDevice = devices.find((d) => d.id === r.toObject().tailscaleId);
           return {
             ...r.toObject(),
@@ -154,11 +179,9 @@ export class NotificationsSyncService {
         }),
         pagination: {
           total,
-          hasNext: (total / limit) > page,
-          hasPrev: page > 1,
-          page,
           limit,
-        } as PaginationResponse,
+          ...paginationResponse,
+        },
       }
     } catch (error) {
       this.logger.error(error);

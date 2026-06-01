@@ -1,6 +1,7 @@
 export interface ReqQuery {
   page?: number;
   limit?: number;
+  timestamp?: number;
 }
 
 export class PaginationResponse {
