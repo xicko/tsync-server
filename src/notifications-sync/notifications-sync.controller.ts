@@ -1,7 +1,8 @@
-import { Body, Controller, Param, Post, Req } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, Req } from '@nestjs/common';
 import { NotificationsSyncService } from './notifications-sync.service';
 import type { CollectedNotification } from './types/notifications-sync.interface';
 import type { Request } from 'express';
+import type { ReqQuery } from 'src/types/request.interface';
 
 @Controller('notifications-sync')
 export class NotificationsSyncController {
@@ -20,5 +21,10 @@ export class NotificationsSyncController {
       tailscaleId,
       body,
     );
+  }
+
+  @Get('/list')
+  async getNotificationsList(@Req() req: Request, @Query() query: ReqQuery) {
+    return await this.notificationsSyncService.getNotificationsList(req, query);
   }
 }

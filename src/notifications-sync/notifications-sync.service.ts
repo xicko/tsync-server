@@ -11,6 +11,7 @@ import { createHash } from 'crypto';
 import { InjectModel } from '@nestjs/mongoose';
 import { NotificationsSyncLog } from 'src/schemas/notifications-sync-log.schema';
 import { Model } from 'mongoose';
+import { PaginationResponse, ReqQuery } from 'src/types/request.interface';
 
 @Injectable()
 export class NotificationsSyncService {
@@ -74,6 +75,7 @@ export class NotificationsSyncService {
 
         const log = new this.notificationsSyncLogModel({
           type: 'android',
+          tailscaleId: device.id,
           android: {
             packageName: notification.packageName,
             timestamp: notification.timestamp,
@@ -111,6 +113,58 @@ export class NotificationsSyncService {
     } catch (error) {
       this.logger.error(error);
       return { success: false };
+    }
+  }
+
+  async getNotificationsList(
+    req: Request,
+    query: ReqQuery,
+  ) {
+    const ip = getClientIp(req);
+    const redisClient = await getRedisClient();
+    const devices: TailscaleDevice[] = await (async () => {
+      const dData = await redisClient.get('devices');
+      if (!dData || typeof dData !== 'string') return [];
+      return JSON.parse(dData) as TailscaleDevice[];
+    })();
+    const acceptedIps = devices.map((d) => d.addresses[0]);
+    if (!acceptedIps.includes(ip)) return {
+      success: false,
+    };
+
+    const page = Number(query?.page || 1);
+    const limit = Number(query?.limit || 10);
+
+    const skip = (page * limit) - limit;
+
+    try {
+      const [res, total] = await Promise.all([
+        this.notificationsSyncLogModel.find().limit(limit).skip(skip),
+        this.notificationsSyncLogModel.countDocuments(),
+      ]);
+
+      return {
+        success: true,
+        data: res.map((r) => {
+          const tailscaleDevice = devices.find((d) => d.id === r.toObject().tailscaleId);
+          return {
+            ...r.toObject(),
+            tailscaleDevice,
+          };
+        }),
+        pagination: {
+          total,
+          hasNext: (total / limit) > page,
+          hasPrev: page > 1,
+          page,
+          limit,
+        } as PaginationResponse,
+      }
+    } catch (error) {
+      this.logger.error(error);
+      return {
+        success: false,
+      }
     }
   }
 }

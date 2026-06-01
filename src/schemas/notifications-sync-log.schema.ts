@@ -10,6 +10,9 @@ export class NotificationsSyncLog {
   @Prop({ required: true, type: String, enum: ['android'] })
   type: 'android';
 
+  @Prop({ required: true, type: String })
+  tailscaleId: string;
+
   @Prop({
     required: false,
     type: {
