@@ -8,10 +8,17 @@ import { getClientIp } from 'src/utils/network';
 import { OneSignal } from 'src/utils/onesignal';
 import dayjs from 'dayjs';
 import { createHash } from 'crypto';
+import { InjectModel } from '@nestjs/mongoose';
+import { NotificationsSyncLog } from 'src/schemas/notifications-sync-log.schema';
+import { Model } from 'mongoose';
 
 @Injectable()
 export class NotificationsSyncService {
   private readonly logger = new Logger(NotificationsSyncService.name);
+
+  constructor (
+    @InjectModel(NotificationsSyncLog.name) private notificationsSyncLogModel: Model<NotificationsSyncLog>,
+  ) {}
 
   async receiveNotification(
     req: Request,
@@ -63,7 +70,12 @@ export class NotificationsSyncService {
 
         const sendIds = devices.filter((d) => d.id !== deviceId).map((d) => d.id);
 
-        this.logger.debug(sendIds)
+        this.logger.debug(sendIds);
+
+        const log = new this.notificationsSyncLogModel({
+          type: 'android',
+          android: notification,
+        });
 
         await OneSignal
           .create()
@@ -76,7 +88,7 @@ export class NotificationsSyncService {
             n.sendToNtfy();
           });
 
-        // TODO: Save notifications
+        void log.save();
       } else {
         // TODO
       }
