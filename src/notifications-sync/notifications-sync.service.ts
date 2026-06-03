@@ -12,6 +12,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { NotificationsSyncLog } from 'src/schemas/notifications-sync-log.schema';
 import { Model } from 'mongoose';
 import { ReqQuery } from 'src/types/request.interface';
+import gplay from "google-play-scraper";
 
 @Injectable()
 export class NotificationsSyncService {
@@ -128,6 +129,10 @@ export class NotificationsSyncService {
       if (!dData || typeof dData !== 'string') return [];
       return JSON.parse(dData) as TailscaleDevice[];
     })();
+    const devicesMap = new Map<string, TailscaleDevice>();
+    devices.forEach((d) => {
+      devicesMap.set(d.id, d);
+    })
     const acceptedIps = devices.map((d) => d.addresses[0]);
     if (!acceptedIps.includes(ip)) return {
       success: false,
@@ -168,15 +173,59 @@ export class NotificationsSyncService {
         })(),
       }
 
+      const data = res.slice(0, limit).map((r) => {
+        const obj = r.toObject();
+        const tailscaleDevice = devicesMap.get(obj.tailscaleId);
+        return {
+          ...obj,
+          tailscaleDevice,
+        };
+      });
+
+      const uniquePackages = new Set<string>();
+      data.forEach((d) => {
+        if (d.android?.packageName) uniquePackages.add(d.android.packageName);
+      });
+      const appsMap = new Map<string, string>();
+      const missingInCache: string[] = [];
+      await Promise.all(
+        Array.from(uniquePackages).map(async (pkg) => {
+          try {
+            const cachedIcon = await redisClient.get(`app-icon:${pkg}`);
+            if (cachedIcon && typeof cachedIcon === 'string') {
+              appsMap.set(pkg, cachedIcon);
+            } else {
+              missingInCache.push(pkg);
+            }
+          } catch (error) {
+            this.logger.error(error);
+            missingInCache.push(pkg);
+          }
+        })
+      );
+
+      await Promise.all(
+        missingInCache.map(async (pkg) => {
+          try {
+            const app = await gplay.app({ appId: pkg });
+            if (app.icon) {
+              appsMap.set(pkg, app.icon);
+              await redisClient.set(`app-icon:${pkg}`, app.icon, {
+                expiration: { value: 60 * 60 * 24 * 7, type: 'EX' },
+              });
+            }
+          } catch (error) {
+            this.logger.error(error);
+          }
+        })
+      );
+
       return {
         success: true,
-        data: res.slice(0, limit).map((r) => {
-          const tailscaleDevice = devices.find((d) => d.id === r.toObject().tailscaleId);
-          return {
-            ...r.toObject(),
-            tailscaleDevice,
-          };
-        }),
+        data: data.map((d) => ({
+          ...d,
+          icon: appsMap.get(d.android?.packageName || '') || undefined,
+        })),
         pagination: {
           total,
           limit,
