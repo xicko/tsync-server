@@ -120,7 +120,12 @@ export class NotificationsSyncService {
 
   async getNotificationsList(
     req: Request,
-    query: ReqQuery,
+    query: ReqQuery & {
+      search?: string;
+      os?: string;
+      startDate?: string;
+      endDate?: string;
+    },
   ) {
     const ip = getClientIp(req);
     const redisClient = await getRedisClient();
@@ -147,16 +152,36 @@ export class NotificationsSyncService {
 
     const skip = (page * limit) - limit;
 
+    const filters: Record<string, any> = {};
+    const timestampFilter: Record<string, number> = {};
+
+    if (paginationMode === 'timestamp') timestampFilter.$lt = Number(query.timestamp);
+
+    if (query?.search) {
+      const searchRegex = new RegExp(query.search, 'i');
+      filters.$or = [
+        { 'android.title': searchRegex },
+        { 'android.text': searchRegex },
+        { 'android.packageName': searchRegex },
+        { 'android.infoText': searchRegex },
+        { 'android.conversationTitle': searchRegex },
+      ]
+    }
+
+    if (query?.os) filters.type = query.os;
+
+    if (query?.startDate) timestampFilter.$gte = Number(query.startDate);
+    if (query?.endDate) timestampFilter.$lte = Number(query.endDate);
+    if (Object.keys(timestampFilter).length > 0) filters.timestamp = timestampFilter;
+
     try {
       const [res, total] = await Promise.all([
         this.notificationsSyncLogModel
-          .find(paginationMode === 'paged'
-            ? {}
-            : { 'timestamp': { $lt: Number(query.timestamp) } })
+          .find(filters)
           .sort({ 'timestamp': -1 })
           .limit(paginationMode === 'paged' ? limit : (limit + 1))
           .skip(paginationMode === 'paged' ? skip : 0),
-        this.notificationsSyncLogModel.countDocuments(),
+        this.notificationsSyncLogModel.countDocuments(filters),
       ]);
 
       const paginationResponse = paginationMode === 'paged' ? {
