@@ -125,6 +125,7 @@ export class NotificationsSyncService {
       os?: string;
       startDate?: string;
       endDate?: string;
+      tailscaleId?: string;
     },
   ) {
     const ip = getClientIp(req);
@@ -169,6 +170,11 @@ export class NotificationsSyncService {
     }
 
     if (query?.os) filters.type = query.os;
+
+    if (query?.tailscaleId) {
+      const idArray = query.tailscaleId.split(',');
+      filters.tailscaleId = { $in: idArray };
+    }
 
     if (query?.startDate) timestampFilter.$gte = Number(query.startDate);
     if (query?.endDate) timestampFilter.$lte = Number(query.endDate);
