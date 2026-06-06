@@ -1,29 +1,28 @@
 /* eslint-disable prettier/prettier */
-/* eslint-disable no-empty */
 import { Injectable, Logger } from '@nestjs/common';
 import type { Request } from 'express';
 import {
   BatteryStatus,
-  TailscaleDevice,
   TailscaleDevicesResponse,
 } from '../types/tailscale.interface';
 import getRedisClient from '../utils/redis';
 import { getClientIp } from '../utils/network';
 import { OneSignal } from '../utils/onesignal';
+import { DevicesDB } from './devices.db';
 
 @Injectable()
 export class DevicesService {
   private readonly logger = new Logger(DevicesService.name);
 
+  constructor(private readonly devicesDb: DevicesDB) {}
+
   async getDevices(req?: Request): Promise<TailscaleDevicesResponse> {
     let ip: string | null = null;
     if (req) ip = getClientIp(req);
-    const redisClient = await getRedisClient();
-    const devices = await redisClient.get('devices');
-    if (!devices || typeof devices !== 'string') {
+    const parsed = await this.devicesDb.findAll();
+    if (!parsed) {
       return { devices: [] };
     }
-    const parsed = JSON.parse(devices) as TailscaleDevice[];
     const mod = parsed.map((device) => {
       if (ip !== null && device.addresses[0] === ip) device.isThisDevice = true;
       return device;
@@ -33,10 +32,9 @@ export class DevicesService {
 
   async wakeOnLan(deviceId: string): Promise<{ success: boolean }> {
     const redisClient = await getRedisClient();
-    const devices = await redisClient.get('devices');
-    if (!devices || typeof devices !== 'string') return { success: false };
+    const parsed = await this.devicesDb.findAll();
+    if (!parsed) return { success: false };
 
-    const parsed = JSON.parse(devices) as TailscaleDevice[];
     const device = parsed.find((device) => device.id === deviceId);
     if (!device?.windowsConfig?.macAddress) return { success: false };
 
@@ -99,24 +97,16 @@ export class DevicesService {
     macAddress: string,
   ): Promise<{ success: boolean }> {
     try {
-      const redisClient = await getRedisClient();
-      const key = `devices`;
-
-      const devicesRaw = await redisClient.get(key);
-      if (!devicesRaw || typeof devicesRaw !== 'string') {
-        return { success: false };
-      }
-      let devices = JSON.parse(devicesRaw) as TailscaleDevice[];
-      const device = devices.find((d) => d.id === deviceId);
+      const device = await this.devicesDb.findOne(deviceId);
       if (!device || device?.os !== 'windows') {
         return { success: false };
       }
-      if (!device.windowsConfig) device.windowsConfig = {};
-      device.windowsConfig.macAddress = macAddress || undefined;
-      devices = devices.map((d) => (d.id === deviceId ? device : d));
-
-      await redisClient.set(key, JSON.stringify(devices));
-      return { success: true };
+      const updated = await this.devicesDb.updateAdditionals(deviceId, {
+        windowsConfig: {
+          macAddress: macAddress || undefined,
+        },
+      });
+      return { success: !!updated };
     } catch (error) {
       this.logger.error(error);
       return { success: false };
@@ -129,15 +119,7 @@ export class DevicesService {
     body: BatteryStatus,
   ): Promise<{ success: boolean }> {
     try {
-      const redisClient = await getRedisClient();
-      const key = `devices`;
-
-      const devicesRaw = await redisClient.get(key);
-      if (!devicesRaw || typeof devicesRaw !== 'string') {
-        return { success: false };
-      }
-      let devices = JSON.parse(devicesRaw) as TailscaleDevice[];
-      const device = devices?.find((d) => d.id === deviceId) ?? null;
+      const device = await this.devicesDb.findOne(deviceId);
       const requestIp = getClientIp(req);
       if (!device || device.addresses[0] !== requestIp) {
         return { success: false };
@@ -149,15 +131,15 @@ export class DevicesService {
         if (typeof body.level !== 'number' || typeof body.isPlugged !== 'boolean') return { success: false };
 
         const timestampMs = Date.now();
-        device.battery = {
-          timestamp: body.timestamp ?? timestampMs,
-          level: body.level,
-          isPlugged: body.isPlugged
-        };
-        devices = devices.map((d) => (d.id === deviceId ? device : d));
-        await redisClient.set(key, JSON.stringify(devices));
+        const updated = await this.devicesDb.updateAdditionals(deviceId, {
+          battery: {
+            timestamp: body.timestamp ?? timestampMs,
+            level: body.level,
+            isPlugged: body.isPlugged,
+          },
+        });
 
-        return { success: true };
+        return { success: !!updated };
       }
       else if (os === 'ios') {
         // TODO

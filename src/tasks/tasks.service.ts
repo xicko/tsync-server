@@ -21,6 +21,7 @@ import { SheetRow } from 'src/schemas/sheet-row.schema';
 import { CronConfig } from 'src/schemas/cron-config.schema';
 import { CronLog } from 'src/schemas/cron-log.schema';
 import { DevicesService } from 'src/devices/devices.service';
+import { DevicesDB } from 'src/devices/devices.db';
 
 dayjs.extend(duration);
 
@@ -44,7 +45,8 @@ export class TasksService implements OnModuleInit {
     @InjectModel(SheetRow.name) private sheetRowModel: Model<SheetRow>,
     private readonly schedulerRegistry: SchedulerRegistry,
     @InjectModel(CronConfig.name) private cronConfigModel: Model<CronConfig>,
-    @InjectModel(CronLog.name) private cronLogModel: Model<CronLog>
+    @InjectModel(CronLog.name) private cronLogModel: Model<CronLog>,
+    private readonly devicesDb: DevicesDB
   ) {}
 
   async onModuleInit() {
@@ -207,14 +209,7 @@ export class TasksService implements OnModuleInit {
   // DEVICES
   @Cron(CronExpression.EVERY_30_SECONDS)
   async handleDevicesCron() {
-    const key = 'devices';
-    const redisClient = await getRedisClient();
-
-    const prevDevicesRaw = await redisClient.get(key);
-    const prevDevices: TailscaleDevice[] =
-      prevDevicesRaw && typeof prevDevicesRaw === 'string'
-        ? JSON.parse(prevDevicesRaw)
-        : [];
+    const prevDevices = await this.devicesDb.findAll() || [];
 
     const prevMap = new Map<string, TailscaleDevice>();
     prevDevices.forEach((p) => {
@@ -237,7 +232,7 @@ export class TasksService implements OnModuleInit {
       }
     });
 
-    await redisClient.set(key, JSON.stringify(res));
+    await this.devicesDb.saveAll(res);
     this.gateway.server.emit('devicesUpdate', JSON.stringify(res));
 
     this.logger.debug(`updated: ${JSON.stringify(updated.length)}`);
@@ -416,11 +411,9 @@ export class TasksService implements OnModuleInit {
       return;
     }
 
-    const redisClient = await getRedisClient();
-    const devicesRaw = await redisClient.get('devices');
-    if (!devicesRaw || typeof devicesRaw !== 'string') throw new Error('No devices found in Redis');
+    const parsed = await this.devicesDb.findAll();
+    if (!parsed || parsed.length === 0) throw new Error('No devices found in Redis');
 
-    const parsed = JSON.parse(devicesRaw) as TailscaleDevice[];
     const addresses = parsed.map((device) => device.addresses[0]);
     if (addresses.length === 0) throw new Error('No Tailscale addresses found');
 

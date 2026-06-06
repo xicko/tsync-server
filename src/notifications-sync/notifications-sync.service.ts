@@ -14,6 +14,7 @@ import { Model } from 'mongoose';
 import { ReqQuery } from 'src/types/request.interface';
 import gplay from "google-play-scraper";
 import { EventsGateway } from 'src/events/events.gateway';
+import { DevicesDB } from 'src/devices/devices.db';
 
 @Injectable()
 export class NotificationsSyncService {
@@ -22,6 +23,7 @@ export class NotificationsSyncService {
   constructor (
     @InjectModel(NotificationsSyncLog.name) private notificationsSyncLogModel: Model<NotificationsSyncLog>,
     private readonly eventsGateway: EventsGateway,
+    private readonly devicesDb: DevicesDB,
   ) {}
 
   async receiveNotification(
@@ -30,13 +32,10 @@ export class NotificationsSyncService {
     body: CollectedNotification,
   ): Promise<{ success: boolean }> {
     try {
-      const redisClient = await getRedisClient();
-      const key = `devices`;
-      const devicesRaw = await redisClient.get(key);
-      if (!devicesRaw || typeof devicesRaw !== 'string') {
+      const devices = await this.devicesDb.findAll();
+      if (!devices) {
         return { success: false };
       }
-      const devices = JSON.parse(devicesRaw) as TailscaleDevice[];
       const device = devices.find((d) => d.id === deviceId);
       if (!device) {
         return { success: false };
@@ -60,6 +59,7 @@ export class NotificationsSyncService {
         const hashKey = `${pn}|${t}|${m}|${it}|${ct}`;
         const hash = createHash('sha256').update(hashKey).digest('hex');
 
+        const redisClient = await getRedisClient();
         const redisKey = `notification:${hash}`;
 
         const lastNotification = await redisClient.get(redisKey);
@@ -162,12 +162,7 @@ export class NotificationsSyncService {
     },
   ) {
     const ip = getClientIp(req);
-    const redisClient = await getRedisClient();
-    const devices: TailscaleDevice[] = await (async () => {
-      const dData = await redisClient.get('devices');
-      if (!dData || typeof dData !== 'string') return [];
-      return JSON.parse(dData) as TailscaleDevice[];
-    })();
+    const devices = (await this.devicesDb.findAll()) || [];
     const devicesMap = new Map<string, TailscaleDevice>();
     devices.forEach((d) => {
       devicesMap.set(d.id, d);
