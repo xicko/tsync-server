@@ -20,6 +20,7 @@ import { OneSignal } from 'src/utils/onesignal';
 import { RealtimeNoteMessageType } from 'src/types/realtimenote.interface';
 import { ShellEventPayload } from 'src/types/shell.interface';
 import { DevicesDB } from 'src/devices/devices.db';
+import { getSocketIp } from 'src/utils/network';
 
 @WebSocketGateway({
   cors: {
@@ -48,9 +49,21 @@ export class EventsGateway
     this.logger.log('WebSocket gateway initialized');
   }
 
-  handleConnection(client: Socket) {
+  async handleConnection(client: Socket) {
+    const ip = getSocketIp(client);
+    const isLocal = ip === '127.0.0.1' || ip === '::1' || ip === 'localhost';
+
+    const devices = (await this.devicesDb.findAll()) || [];
+    const acceptedIps = devices.flatMap((d) => d.addresses);
+
+    if (!isLocal && !acceptedIps.includes(ip)) {
+      this.logger.warn(`Unauthorized socket connection attempt rejected from IP: ${ip}`);
+      client.disconnect(true);
+      return;
+    }
+
     // prettier-ignore
-    this.logger.log(`Client connected: ${client.id} ${(client.handshake?.query as unknown as TailscaleDevice)?.name || ''}`);
+    this.logger.log(`Client connected: ${client.id} ${(client.handshake?.query as unknown as TailscaleDevice)?.name || ''} from IP: ${ip}`);
   }
 
   handleDisconnect(client: Socket) {
