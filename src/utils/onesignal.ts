@@ -145,7 +145,7 @@ export class OneSignal implements NeedsTitle, NeedsMessage, CanSend {
             Tags: 'loudspeaker',
           }
         : undefined,
-    });
+    }).catch((e) => this.logger.error('sendToNtfy error:', e));
 
     return this;
   }

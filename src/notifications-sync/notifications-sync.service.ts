@@ -13,6 +13,7 @@ import { NotificationsSyncLog } from 'src/schemas/notifications-sync-log.schema'
 import { Model } from 'mongoose';
 import { ReqQuery } from 'src/types/request.interface';
 import gplay from "google-play-scraper";
+import { EventsGateway } from 'src/events/events.gateway';
 
 @Injectable()
 export class NotificationsSyncService {
@@ -20,6 +21,7 @@ export class NotificationsSyncService {
 
   constructor (
     @InjectModel(NotificationsSyncLog.name) private notificationsSyncLogModel: Model<NotificationsSyncLog>,
+    private readonly eventsGateway: EventsGateway,
   ) {}
 
   async receiveNotification(
@@ -91,6 +93,13 @@ export class NotificationsSyncService {
           },
         });
 
+        void (async () => {
+          let icon: string | null = null;
+          icon = await this.getAppIcon(notification.packageName);
+          if (!icon) icon = await this.saveAppIcon(notification.packageName);
+          this.eventsGateway.server.emit('receiveNotification', { ...log.toObject(), icon });
+        })();
+
         await OneSignal
           .create()
           .title(`${deviceName} (Notifications Sync)`)
@@ -116,6 +125,30 @@ export class NotificationsSyncService {
       this.logger.error(error);
       return { success: false };
     }
+  }
+
+  private async saveAppIcon(pkg: string): Promise<string | null> {
+    const redisClient = await getRedisClient();
+    try {
+      const app = await gplay.app({ appId: pkg });
+      if (app.icon) {
+        await redisClient.set(`app-icon:${pkg}`, app.icon, {
+          expiration: { value: 60 * 60 * 24 * 7, type: 'EX' },
+        });
+        return app.icon;
+      }
+      return null;
+    } catch (error) {
+      this.logger.error(error);
+      return null;
+    }
+  }
+
+  private async getAppIcon(pkg: string): Promise<string | null> {
+    const redisClient = await getRedisClient();
+    const cachedIcon = await redisClient.get(`app-icon:${pkg}`);
+    if (cachedIcon && typeof cachedIcon === 'string') return cachedIcon;
+    return null;
   }
 
   async getNotificationsList(
@@ -222,8 +255,8 @@ export class NotificationsSyncService {
       await Promise.all(
         Array.from(uniquePackages).map(async (pkg) => {
           try {
-            const cachedIcon = await redisClient.get(`app-icon:${pkg}`);
-            if (cachedIcon && typeof cachedIcon === 'string') {
+            const cachedIcon = await this.getAppIcon(pkg);
+            if (cachedIcon) {
               appsMap.set(pkg, cachedIcon);
             } else {
               missingInCache.push(pkg);
@@ -237,17 +270,8 @@ export class NotificationsSyncService {
 
       await Promise.all(
         missingInCache.map(async (pkg) => {
-          try {
-            const app = await gplay.app({ appId: pkg });
-            if (app.icon) {
-              appsMap.set(pkg, app.icon);
-              await redisClient.set(`app-icon:${pkg}`, app.icon, {
-                expiration: { value: 60 * 60 * 24 * 7, type: 'EX' },
-              });
-            }
-          } catch (error) {
-            this.logger.error(error);
-          }
+          const iconUrl = await this.saveAppIcon(pkg);
+          if (iconUrl) appsMap.set(pkg, iconUrl);
         })
       );
 
