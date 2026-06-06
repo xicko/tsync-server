@@ -18,24 +18,8 @@ import { TailscaleDevice } from 'src/types/tailscale.interface';
 import { runCommandSpawn } from 'src/utils/shell';
 import { OneSignal } from 'src/utils/onesignal';
 import { RealtimeNoteMessageType } from 'src/types/realtimenote.interface';
-import getRedisClient from 'src/utils/redis';
 import { ShellEventPayload } from 'src/types/shell.interface';
-
-// helper
-async function getAdbIdentifier(tailscaleDeviceId: string): Promise<string | null> {
-  const redisClient = await getRedisClient();
-  const devices = await redisClient.get('devices');
-  if (!devices || typeof devices !== 'string') return null;
-
-  const devicesParsed: TailscaleDevice[] = JSON.parse(devices);
-  const device = devicesParsed.find((d) => d.id === tailscaleDeviceId);
-
-  const address = device?.addresses[0];
-  const port = device?.androidConfig?.adb?.port;
-  if (!port || !address) return null;
-  
-  return `${address}:${port}`;
-}
+import { DevicesDB } from 'src/devices/devices.db';
 
 @WebSocketGateway({
   cors: {
@@ -49,6 +33,16 @@ export class EventsGateway
   server: Server;
 
   private readonly logger = new Logger(EventsGateway.name);
+
+  constructor(private readonly devicesDb: DevicesDB) {}
+
+  private async getAdbIdentifier(tailscaleDeviceId: string): Promise<string | null> {
+    const device = await this.devicesDb.findOne(tailscaleDeviceId);
+    const address = device?.addresses[0];
+    const port = device?.androidConfig?.adb?.port;
+    if (!port || !address) return null;
+    return `${address}:${port}`;
+  }
 
   afterInit() {
     this.logger.log('WebSocket gateway initialized');
@@ -90,7 +84,7 @@ export class EventsGateway
       if (!rawCommand || rawCommand.length === 0) return;
       if (!tailscaleDeviceId || tailscaleDeviceId.length === 0) return;
 
-      const adbIdentifier: string | null = await getAdbIdentifier(tailscaleDeviceId);
+      const adbIdentifier: string | null = await this.getAdbIdentifier(tailscaleDeviceId);
       if (!adbIdentifier) {
         this.logger.error(`Device not found for tailscaleDeviceId: ${tailscaleDeviceId}`);
         this.server.emit('shell_stdout', 'Error: Device not found.');
@@ -116,7 +110,7 @@ export class EventsGateway
       if (!password || password.length === 0) return;
       if (!tailscaleDeviceId || tailscaleDeviceId.length === 0) return;
 
-      const adbIdentifier: string | null = await getAdbIdentifier(tailscaleDeviceId);
+      const adbIdentifier: string | null = await this.getAdbIdentifier(tailscaleDeviceId);
       if (!adbIdentifier) {
         this.logger.error(`Device not found for tailscaleDeviceId: ${tailscaleDeviceId}`);
         this.server.emit('shell_stdout', 'Error: Device not found.');

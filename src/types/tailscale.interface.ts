@@ -30,7 +30,24 @@ export interface TailscaleDistro {
   codeName?: string;
 }
 
-export interface TailscaleDevice {
+export interface TailscaleDeviceAdditionals {
+  isHost?: boolean;
+  isThisDevice?: boolean;
+
+  battery?: BatteryStatus;
+
+  androidConfig?: {
+    adb?: {
+      port?: number;
+    };
+  };
+
+  windowsConfig?: {
+    macAddress?: string;
+  };
+}
+
+export interface TailscaleDevice extends TailscaleDeviceAdditionals {
   addresses: string[];
   id: string;
   nodeId: string;
@@ -61,21 +78,6 @@ export interface TailscaleDevice {
   postureIdentity?: TailscalePostureIdentity;
   isEphemeral: boolean;
   distro?: TailscaleDistro;
-
-  isHost?: boolean;
-  isThisDevice?: boolean;
-
-  battery?: BatteryStatus;
-
-  androidConfig?: {
-    adb?: {
-      port?: number;
-    };
-  };
-
-  windowsConfig?: {
-    macAddress?: string;
-  };
 }
 
 export interface TailscaleDevicesResponse {

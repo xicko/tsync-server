@@ -1,10 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { DevicesDB } from '../devices/devices.db';
 import getRedisClient from '../utils/redis';
-import { TailscaleDevice } from '../types/tailscale.interface';
 
 @Injectable()
 export class AdbService {
   private readonly logger = new Logger(AdbService.name);
+
+  constructor(private readonly devicesDb: DevicesDB) {}
 
   async getConnectedAdbDevices(): Promise<string[]> {
     try {
@@ -23,30 +25,24 @@ export class AdbService {
 
   async setAdbDeviceIdentifier(deviceId: string, identifier: string | null) {
     try {
-      const redisClient = await getRedisClient();
-      const key = `devices`;
-
-      const devicesRaw = await redisClient.get(key);
-      if (!devicesRaw || typeof devicesRaw !== 'string') {
-        return { success: false };
-      }
-      let devices = JSON.parse(devicesRaw) as TailscaleDevice[];
-      const device = devices.find((d) => d.id === deviceId);
+      const device = await this.devicesDb.findOne(deviceId);
       if (!device) {
         return { success: false };
       }
-      if (!device.androidConfig) device.androidConfig = {};
-      if (!device.androidConfig.adb) device.androidConfig.adb = {};
       const portNumber = Number(identifier);
       if (isNaN(portNumber)) {
         return { success: false };
       }
-      device.androidConfig.adb.port =
-        identifier !== null ? portNumber : undefined;
-      devices = devices.map((d) => (d.id === deviceId ? device : d));
 
-      await redisClient.set(key, JSON.stringify(devices));
-      return { success: true };
+      const updated = await this.devicesDb.updateAdditionals(deviceId, {
+        androidConfig: {
+          adb: {
+            port: identifier !== null ? portNumber : undefined,
+          },
+        },
+      });
+
+      return { success: !!updated };
     } catch (error) {
       this.logger.error(error);
       return { success: false };
