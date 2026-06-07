@@ -120,8 +120,7 @@ export class DevicesService {
   ): Promise<{ success: boolean }> {
     try {
       const device = await this.devicesDb.findOne(deviceId);
-      const requestIp = getClientIp(req);
-      if (!device || device.addresses[0] !== requestIp) {
+      if (!device) {
         return { success: false };
       }
 
