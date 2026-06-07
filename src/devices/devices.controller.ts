@@ -1,7 +1,9 @@
-import { Body, Controller, Get, Param, Patch, Post, Req } from '@nestjs/common';
+/* eslint-disable prettier/prettier */
+import { Body, Controller, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
 import { DevicesService } from './devices.service';
 import type { Request } from 'express';
 import type { BatteryStatus } from 'src/types/tailscale.interface';
+import { TailscaleDeviceIpGuard } from 'src/guards/tailscale-ip.guard';
 
 @Controller('devices')
 export class DevicesController {
@@ -29,6 +31,7 @@ export class DevicesController {
   }
 
   @Patch('/:tailscaleId/update-battery-status')
+  @UseGuards(TailscaleDeviceIpGuard)
   async updateBatteryStatus(
     @Req() req: Request,
     @Param('tailscaleId') tailscaleId: string,

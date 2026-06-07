@@ -4,7 +4,6 @@ import getRedisClient from '../utils/redis';
 import { TailscaleDevice } from '../types/tailscale.interface';
 import { CollectedNotification } from './types/notifications-sync.interface';
 import { Request } from 'express';
-import { getClientIp } from 'src/utils/network';
 import { OneSignal } from 'src/utils/onesignal';
 import dayjs from 'dayjs';
 import { createHash } from 'crypto';
@@ -15,6 +14,8 @@ import { ReqQuery } from 'src/types/request.interface';
 import gplay from "google-play-scraper";
 import { EventsGateway } from 'src/events/events.gateway';
 import { DevicesDB } from 'src/devices/devices.db';
+import { NotificationsSyncDenylist } from 'src/schemas/notifications-sync-denylist.schema';
+import { CreateDenyDto } from './dto/deny.dto';
 
 @Injectable()
 export class NotificationsSyncService {
@@ -22,6 +23,7 @@ export class NotificationsSyncService {
 
   constructor (
     @InjectModel(NotificationsSyncLog.name) private notificationsSyncLogModel: Model<NotificationsSyncLog>,
+    @InjectModel(NotificationsSyncDenylist.name) private notificationsSyncDenyModel: Model<NotificationsSyncDenylist>,
     private readonly eventsGateway: EventsGateway,
     private readonly devicesDb: DevicesDB,
   ) {}
@@ -41,11 +43,6 @@ export class NotificationsSyncService {
         return { success: false };
       }
       
-      const reqIp = getClientIp(req);
-      if (device?.addresses[0] !== reqIp) {
-        return { success: false };
-      }
-      
       if (body.type === 'android' && device.os === 'android') {
         const notification = body.android;
         const deviceName = device.name.split('.')[0] || '';
@@ -58,6 +55,36 @@ export class NotificationsSyncService {
         const ct = notification.conversationTitle.toLowerCase().trim();
         const hashKey = `${pn}|${t}|${m}|${it}|${ct}`;
         const hash = createHash('sha256').update(hashKey).digest('hex');
+
+        const denylistRules = await this.notificationsSyncDenyModel.find({
+          $or: [
+            { tailscaleId: { $exists: false } },
+            { tailscaleId: null },
+            { tailscaleId: deviceId },
+          ],
+        });
+
+        const isBlocked = denylistRules.some((rule) => {
+          if (rule.type === 'packageIdentifier') {
+            return rule.packageIdentifier && rule.packageIdentifier.toLowerCase().trim() === pn;
+          }
+          if (rule.type === 'text') {
+            const lowerText = rule.text?.toLowerCase().trim();
+            if (!lowerText) return false;
+            return (
+              t.includes(lowerText) ||
+              m.includes(lowerText) ||
+              it.includes(lowerText) ||
+              ct.includes(lowerText)
+            );
+          }
+          return false;
+        });
+
+        if (isBlocked) {
+          this.logger.debug(`Notification from ${pn} blocked by denylist`);
+          return { success: false };
+        }
 
         const redisClient = await getRedisClient();
         const redisKey = `notification:${hash}`;
@@ -161,16 +188,11 @@ export class NotificationsSyncService {
       tailscaleId?: string;
     },
   ) {
-    const ip = getClientIp(req);
     const devices = (await this.devicesDb.findAll()) || [];
     const devicesMap = new Map<string, TailscaleDevice>();
     devices.forEach((d) => {
       devicesMap.set(d.id, d);
     })
-    const acceptedIps = devices.map((d) => d.addresses[0]);
-    if (!acceptedIps.includes(ip)) return {
-      success: false,
-    };
 
     let paginationMode: 'paged' | 'timestamp' = 'paged';
 
@@ -287,6 +309,99 @@ export class NotificationsSyncService {
       return {
         success: false,
       }
+    }
+  }
+
+  async getDenyList(
+    req: Request,
+    query: ReqQuery,
+  ) {
+    const page = Number(query?.page || 1);
+    const limit = Number(query?.limit || 10);
+
+    const skip = (page * limit) - limit;
+
+    try {
+      const [res, total] = await Promise.all([
+        this.notificationsSyncDenyModel.find().skip(skip).limit(limit),
+        this.notificationsSyncDenyModel.countDocuments(),
+      ]);
+
+      return {
+        success: true,
+        data: res.map((r) => r.toObject()),
+        pagination: {
+          total,
+          limit,
+          page,
+          hasNext: (total / limit) > page,
+          hasPrev: page > 1,
+        },
+      }
+    } catch (error) {
+      this.logger.error(error);
+      return {
+        success: false,
+      }
+    }
+  }
+
+  async createDeny(
+    req: Request,
+    body: CreateDenyDto,
+  ) {
+    try {
+      const { type, text, packageIdentifier, tailscaleId } = body;
+
+      if (type === 'text' && (!text || text.trim() === '')) {
+        return { success: false };
+      }
+      if (type === 'packageIdentifier' && (!packageIdentifier || packageIdentifier.trim() === '')) {
+        return { success: false };
+      }
+
+      const query: Record<string, any> = {
+        type,
+        tailscaleId: tailscaleId || null,
+      };
+      if (type === 'text' && text) query.text = text.trim();
+      if (type === 'packageIdentifier' && packageIdentifier) query.packageIdentifier = packageIdentifier.trim();
+
+      const existing = await this.notificationsSyncDenyModel.findOne(query);
+      if (existing) {
+        return { success: false };
+      }
+
+      const created = await this.notificationsSyncDenyModel.create({
+        type,
+        tailscaleId: tailscaleId || undefined,
+        text: type === 'text' && text ? text.trim() : undefined,
+        packageIdentifier: type === 'packageIdentifier' && packageIdentifier ? packageIdentifier.trim() : undefined,
+      });
+
+      return {
+        success: true,
+        data: created.toObject(),
+      };
+    } catch (error) {
+      this.logger.error(error);
+      return { success: false };
+    }
+  }
+
+  async deleteDeny(
+    req: Request,
+    id: string,
+  ) {
+    try {
+      const deleted = await this.notificationsSyncDenyModel.findByIdAndDelete(id);
+      if (!deleted) {
+        return { success: false };
+      }
+      return { success: true };
+    } catch (error) {
+      this.logger.error(error);
+      return { success: false };
     }
   }
 }
