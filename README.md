@@ -48,7 +48,7 @@ create a `.env` file in the root based on `.env.example`:
 | **tailscale** | `TAILNET_ID`, `TAILNET_API_KEY` |
 | **database** | `MONGO_URI`, `DB_NAME`, `REDIS_URL` |
 | **notifications** | `ONESIGNAL_APP_ID`, `ONESIGNAL_REST_KEY`, `NTFY_TOPIC` |
-| **adb/remote** | `ADB_ADDRESS`, `ADB_ADDRESS2`, `HOST_IP`, `WOL_SERVICE_PORT` |
+| **adb/remote** | `HOST_IP`, `WOL_SERVICE_PORT` |
 | **telegram** | `TELEGRAM_API_ID`, `TELEGRAM_API_HASH`, `TELEGRAM_SESSION` |
 
 ---
