@@ -156,16 +156,28 @@ export class NotificationsSyncService {
 
   private async saveAppIcon(pkg: string): Promise<string | null> {
     const redisClient = await getRedisClient();
+    const saveKey = `app-icon:${pkg}`;
+    const failedKey = `app-icon-failed:${pkg}`;
+    const ONE_WEEK_IN_SECONDS = 604_800;
+
+    const failed = await redisClient.get(failedKey);
+    if (failed === '1') return null;
+
     try {
       const app = await gplay.app({ appId: pkg });
       if (app.icon) {
-        await redisClient.set(`app-icon:${pkg}`, app.icon, {
-          expiration: { value: 60 * 60 * 24 * 7, type: 'EX' },
+        await redisClient.set(saveKey, app.icon, {
+          expiration: { value: ONE_WEEK_IN_SECONDS, type: 'EX' },
         });
         return app.icon;
       }
       return null;
     } catch (error) {
+      if (error instanceof Error && error.message.includes('App not found (404)')) {
+        await redisClient.set(failedKey, '1', {
+          expiration: { value: ONE_WEEK_IN_SECONDS, type: 'EX' },
+        });
+      }
       this.logger.error(error);
       return null;
     }
