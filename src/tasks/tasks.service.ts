@@ -3,7 +3,6 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { Cron, CronExpression, SchedulerRegistry } from '@nestjs/schedule';
 import { CronJob } from 'cron';
-import { SheetsService } from 'src/sheets/sheets.service';
 import { EventsGateway } from 'src/events/events.gateway';
 import {
   TailscaleDevice,
@@ -14,10 +13,8 @@ import getRedisClient from 'src/utils/redis';
 import dayjs from 'dayjs';
 import duration from 'dayjs/plugin/duration';
 import { runCommandSpawn } from 'src/utils/shell';
-import { TelegramService } from 'src/telegram/telegram.service';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
-import { SheetRow } from 'src/schemas/sheet-row.schema';
 import { CronConfig } from 'src/schemas/cron-config.schema';
 import { CronLog } from 'src/schemas/cron-log.schema';
 import { DevicesService } from 'src/devices/devices.service';
@@ -39,10 +36,7 @@ export class TasksService implements OnModuleInit {
 
   constructor(
     private readonly gateway: EventsGateway,
-    private readonly sheetsService: SheetsService,
     private readonly devicesService: DevicesService,
-    private readonly telegramService: TelegramService,
-    @InjectModel(SheetRow.name) private sheetRowModel: Model<SheetRow>,
     private readonly schedulerRegistry: SchedulerRegistry,
     @InjectModel(CronConfig.name) private cronConfigModel: Model<CronConfig>,
     @InjectModel(CronLog.name) private cronLogModel: Model<CronLog>,
@@ -99,7 +93,6 @@ export class TasksService implements OnModuleInit {
     let method: () => Promise<void>;
     
     switch(type) {
-      case 'SHEETS': method = () => this.handleSheetsCron(); break;
       case 'REMINDER': method = () => this.handleReminderCron(data); break;
       case 'COUNT': method = () => this.handleCountCron(data); break;
       case 'HEALTHCHECK': method = () => this.handleServiceHealthCheckCron(data); break;
@@ -183,7 +176,6 @@ export class TasksService implements OnModuleInit {
 
     let method: () => Promise<void>;
     switch(config.type) {
-      case 'SHEETS': method = () => this.handleSheetsCron(); break;
       case 'REMINDER': method = () => this.handleReminderCron(config.data); break;
       case 'COUNT': method = () => this.handleCountCron(config.data); break;
       case 'HEALTHCHECK': method = () => this.handleServiceHealthCheckCron(config.data); break;
@@ -316,11 +308,6 @@ export class TasksService implements OnModuleInit {
     return {
       devices: [],
     };
-  }
-
-  // SHEETS
-  async handleSheetsCron() {
-    await this.sheetsService.syncSheet();
   }
 
   // REMINDER
