@@ -5,7 +5,6 @@ import { EventsModule } from './events/events.module';
 import { TelegramModule } from './telegram/telegram.module';
 import { AdbModule } from './adb/adb.module';
 import { DevicesModule } from './devices/devices.module';
-import { SheetsModule } from './sheets/sheets.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { TasksService } from './tasks/tasks.service';
 import { MongooseModule } from '@nestjs/mongoose';
@@ -28,7 +27,6 @@ dotenv.config();
     TelegramModule,
     AdbModule,
     DevicesModule,
-    SheetsModule,
     ScheduleModule.forRoot(),
     MongooseModule.forRoot(process.env.MONGO_URI || '', {
       dbName: process.env.DB_NAME,
