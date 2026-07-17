@@ -18,6 +18,7 @@ import {
   NotificationsSyncLog,
   NotificationsSyncLogSchema,
 } from './schemas/notifications-sync-log.schema';
+import { SettingsModule } from './global/settings/settings.module';
 dotenv.config();
 
 @Module({
@@ -27,6 +28,7 @@ dotenv.config();
     TelegramModule,
     AdbModule,
     DevicesModule,
+    SettingsModule,
     ScheduleModule.forRoot(),
     MongooseModule.forRoot(process.env.MONGO_URI || '', {
       dbName: process.env.DB_NAME,

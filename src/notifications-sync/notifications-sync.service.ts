@@ -95,7 +95,7 @@ export class NotificationsSyncService {
           return { success: false };
         }
 
-        await redisClient.set(redisKey, '1', { expiration: { value: 15000, type: 'PX' } });
+        await redisClient.set(redisKey, '1', { expiration: { value: 30000, type: 'PX' } });
 
         const message = `${notification.title}\n${notification.text}\n${notification.packageName}\n${dayjs(notification.timestamp).format('MM/DD - HH:mm:ss')}`;
 
