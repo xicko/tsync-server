@@ -19,6 +19,7 @@ import { CronConfig } from 'src/schemas/cron-config.schema';
 import { CronLog } from 'src/schemas/cron-log.schema';
 import { DevicesService } from 'src/devices/devices.service';
 import { DevicesDB } from 'src/devices/devices.db';
+import { SettingsDB } from 'src/global/settings/settings.db';
 
 dayjs.extend(duration);
 
@@ -40,7 +41,8 @@ export class TasksService implements OnModuleInit {
     private readonly schedulerRegistry: SchedulerRegistry,
     @InjectModel(CronConfig.name) private cronConfigModel: Model<CronConfig>,
     @InjectModel(CronLog.name) private cronLogModel: Model<CronLog>,
-    private readonly devicesDb: DevicesDB
+    private readonly devicesDb: DevicesDB,
+    private readonly settingsDb: SettingsDB,
   ) {}
 
   async onModuleInit() {
@@ -229,22 +231,29 @@ export class TasksService implements OnModuleInit {
 
     this.logger.debug(`updated: ${JSON.stringify(updated.length)}`);
 
-    await Promise.all(
-      updated.map(
-        async (u) =>
-          await OneSignal
-            .create()
-            .title('UPDATE')
-            .message(`${resolveIsActive(u) ? 'ACTIVE' : 'OFFLINE'}: ${u.os}: ${u.name.split('.')[0]}`)
-            .rest({
-              priority: 10,
-            })
-            .sendPush({ isImportant: true })
-            .then((n) => {
-              return n.sendToNtfy();
+    void (async () => {
+      try {
+        const alertSettings = await this.settingsDb.getAlert();
+        const isEnabled = alertSettings?.enabled ?? false;
+        const denylistIds = new Set<string>(alertSettings?.denylist || []);
+        if (isEnabled) {
+          await Promise.all(
+            updated.map(async (u) => {
+              if (!denylistIds.has(u.id)) {
+                await OneSignal.create()
+                  .title('UPDATE')
+                  .message(`${resolveIsActive(u) ? 'ACTIVE' : 'OFFLINE'}: ${u.os}: ${u.name.split('.')[0]}`)
+                  .rest({ priority: 10 })
+                  .sendPush({ isImportant: true })
+                  .then((n) => n.sendToNtfy());
+              }
             }),
-          ),
-      );
+          );
+        }
+      } catch (error) {
+        this.logger.error('Failed to send update notifications:', error);
+      }
+    })();
 
     this.logger.debug('Devices updated');
   }
