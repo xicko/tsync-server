@@ -126,10 +126,11 @@ export class DevicesService {
 
       const os = device.os.toLowerCase() as 'linux' | 'android' | 'windows' | 'ios' | 'macos';
 
-      if (os === 'android') {
-        if (typeof body.level !== 'number' || typeof body.isPlugged !== 'boolean') return { success: false };
+      const isInvalid: boolean = typeof body.level !== 'number' || typeof body.isPlugged !== 'boolean';
+      if (isInvalid) return { success: false };
 
-        const timestampMs = Date.now();
+      const timestampMs = Date.now();
+      if (os === 'android') {
         const updated = await this.devicesDb.updateAdditionals(deviceId, {
           battery: {
             timestamp: body.timestamp ?? timestampMs,
@@ -142,6 +143,17 @@ export class DevicesService {
       }
       else if (os === 'ios') {
         // TODO
+      }
+      else if (os === 'macos') {
+        const updated = await this.devicesDb.updateAdditionals(deviceId, {
+          battery: {
+            timestamp: body.timestamp ?? timestampMs,
+            level: body.level,
+            isPlugged: body.isPlugged,
+          },
+        });
+
+        return { success: !!updated };
       }
 
       return { success: false };
