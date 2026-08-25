@@ -9,6 +9,7 @@ import getRedisClient from '../utils/redis';
 import { getClientIp } from '../utils/network';
 import { OneSignal } from '../utils/onesignal';
 import { DevicesDB } from './devices.db';
+import { getReadableDeviceName } from './utils/device';
 
 @Injectable()
 export class DevicesService {
@@ -82,7 +83,7 @@ export class DevicesService {
 
     await OneSignal.create()
       .title('DEVICE')
-      .message(`${device.name.split('.')[0]} is waking up via WOL`)
+      .message(`${getReadableDeviceName(device.name)} is waking up via WOL`)
       .rest({
         priority: 10,
       })

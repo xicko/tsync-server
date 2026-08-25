@@ -21,6 +21,7 @@ import { RealtimeNoteMessageType } from 'src/types/realtimenote.interface';
 import { ShellEventPayload } from 'src/types/shell.interface';
 import { DevicesDB } from 'src/devices/devices.db';
 import { getSocketIp } from 'src/utils/network';
+import { getReadableDeviceName } from 'src/devices/utils/device';
 
 @WebSocketGateway({
   cors: {
@@ -160,7 +161,7 @@ export class EventsGateway
     void OneSignal
       .create()
       .title('REALTIME NOTE')
-      .message(`${message.tailscaleDeviceData.name.split('.')[0]}: ${message.message}`)
+      .message(`${getReadableDeviceName(message.tailscaleDeviceData.name)}: ${message.message}`)
       .rest({
         priority: 10,
       })
