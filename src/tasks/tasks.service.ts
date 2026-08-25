@@ -20,6 +20,7 @@ import { CronLog } from 'src/schemas/cron-log.schema';
 import { DevicesService } from 'src/devices/devices.service';
 import { DevicesDB } from 'src/devices/devices.db';
 import { SettingsDB } from 'src/global/settings/settings.db';
+import { getReadableDeviceName } from 'src/devices/utils/device';
 
 dayjs.extend(duration);
 
@@ -203,33 +204,39 @@ export class TasksService implements OnModuleInit {
   // DEVICES
   @Cron(CronExpression.EVERY_30_SECONDS)
   async handleDevicesCron() {
-    const prevDevices = await this.devicesDb.findAll() || [];
+    const existingDevicesMap = new Map<string, TailscaleDevice>();
+    const existingDevices = (await this.devicesDb.findAll()) || [];
+    existingDevices.forEach((p) => existingDevicesMap.set(p.id, p));
 
-    const prevMap = new Map<string, TailscaleDevice>();
-    prevDevices.forEach((p) => {
-      prevMap.set(p.id, p);
+    const latestDevicesMap = new Map<string, TailscaleDevice>();
+    const latestDevices = (await this.getDevices(existingDevicesMap)).devices || [];
+    latestDevices.forEach((n) => latestDevicesMap.set(n.id, n));
+
+    const updatedDevices: TailscaleDevice[] = [];
+    const addedDevices: (TailscaleDevice & { readableName: string })[] = [];
+    
+    latestDevices.forEach((val) => {
+      const existingDevice = existingDevicesMap.get(val.id);
+
+      if (!existingDevice && existingDevices.length > 0) addedDevices.push({...val, readableName: getReadableDeviceName(val.name) });
+
+      if (existingDevice && resolveIsActive(existingDevice) !== resolveIsActive(val)) updatedDevices.push(val);
     });
 
-    const rawRes = await this.getDevices(prevMap);
-    const res = rawRes.devices || [];
+    if (addedDevices.length > 0) void (() => {
+      void OneSignal
+        .create()
+        .title(`${addedDevices.length} DEVICE(S) ADDED`)
+        .message(addedDevices.map((n) => n.readableName).join('\n'))
+        .rest({ priority: 10 })
+        .sendPush({ isImportant: true })
+        .then((n) => n.sendToNtfy());
+    })();
 
-    const newMap = new Map<string, TailscaleDevice>();
-    res.forEach((n) => {
-      newMap.set(n.id, n);
-    });
+    await this.devicesDb.saveAll(latestDevices);
+    this.gateway.server.emit('devicesUpdate', JSON.stringify(latestDevices));
 
-    const updated: TailscaleDevice[] = [];
-    res.forEach((val) => {
-      const prev = prevMap.get(val.id);
-      if (prev && resolveIsActive(prev) !== resolveIsActive(val)) {
-        updated.push(val);
-      }
-    });
-
-    await this.devicesDb.saveAll(res);
-    this.gateway.server.emit('devicesUpdate', JSON.stringify(res));
-
-    this.logger.debug(`updated: ${JSON.stringify(updated.length)}`);
+    this.logger.debug(`updated: ${JSON.stringify(updatedDevices.length)}`);
 
     void (async () => {
       try {
@@ -238,11 +245,11 @@ export class TasksService implements OnModuleInit {
         const denylistIds = new Set<string>(alertSettings?.denylist || []);
         if (isEnabled) {
           await Promise.all(
-            updated.map(async (u) => {
+            updatedDevices.map(async (u) => {
               if (!denylistIds.has(u.id)) {
                 await OneSignal.create()
                   .title('UPDATE')
-                  .message(`${resolveIsActive(u) ? 'ACTIVE' : 'OFFLINE'}: ${u.os}: ${u.name.split('.')[0]}`)
+                  .message(`${resolveIsActive(u) ? 'ACTIVE' : 'OFFLINE'}: ${u.os}: ${getReadableDeviceName(u.name)}`)
                   .rest({ priority: 10 })
                   .sendPush({ isImportant: true })
                   .then((n) => n.sendToNtfy());
