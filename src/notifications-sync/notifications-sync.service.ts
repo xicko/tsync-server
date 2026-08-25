@@ -16,6 +16,7 @@ import { EventsGateway } from 'src/events/events.gateway';
 import { DevicesDB } from 'src/devices/devices.db';
 import { NotificationsSyncDenylist } from 'src/schemas/notifications-sync-denylist.schema';
 import { CreateDenyDto } from './dto/deny.dto';
+import { getReadableDeviceName } from 'src/devices/utils/device';
 
 @Injectable()
 export class NotificationsSyncService {
@@ -45,7 +46,7 @@ export class NotificationsSyncService {
       
       if (body.type === 'android' && device.os === 'android') {
         const notification = body.android;
-        const deviceName = device.name.split('.')[0] || '';
+        const deviceName = getReadableDeviceName(device.name) || '';
         this.logger.debug(notification);
 
         const pn = notification.packageName.toLowerCase().trim();
