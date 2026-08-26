@@ -9,6 +9,7 @@ import { DevicesDB } from 'src/devices/devices.db';
 import { EventsGateway } from 'src/events/events.gateway';
 import { PaginationResponse, ReqQuery } from 'src/types/request.interface';
 import { TailscaleDevice } from 'src/types/tailscale.interface';
+import { OneSignal } from 'src/utils/onesignal';
 
 @Injectable()
 export class StorageService implements OnModuleInit {
@@ -71,6 +72,20 @@ export class StorageService implements OnModuleInit {
     this.logger.debug('File uploaded', upload);
     const returnObj = this.stripFile(upload);
     this.eventsGateway.server.emit('storage', 'upload', returnObj);
+    void OneSignal.create()
+      .title('STORAGE UPLOAD')
+      .message(returnObj.name)
+      .data({
+        type: 'STORAGE_UPLOAD',
+        data: returnObj,
+      })
+      .rest({
+        priority: 10,
+      })
+      .sendPush({
+        isImportant: true,
+      })
+      .then((n) => n.sendToNtfy());
     return returnObj;
   };
 
