@@ -71,21 +71,32 @@ export class StorageService implements OnModuleInit {
 
     this.logger.debug('File uploaded', upload);
     const returnObj = this.stripFile(upload);
-    this.eventsGateway.server.emit('storage', 'upload', returnObj);
-    void OneSignal.create()
-      .title('STORAGE UPLOAD')
-      .message(returnObj.name)
-      .data({
-        type: 'STORAGE_UPLOAD',
-        data: returnObj,
-      })
-      .rest({
-        priority: 10,
-      })
-      .sendPush({
-        isImportant: true,
-      })
-      .then((n) => n.sendToNtfy());
+
+    void (async () => {
+      this.eventsGateway.server.emit('storage', 'upload', returnObj);
+
+      const devices = await this.devicesDb.findAll() || [];
+      const ids: string[] = [];
+      devices.forEach((d) => {
+        if (d.id !== upload.tailscaleId) ids.push(d.id);
+      });
+      void OneSignal.create()
+        .title('STORAGE UPLOAD')
+        .message(returnObj.name)
+        .data({
+          type: 'STORAGE_UPLOAD',
+          data: returnObj,
+        })
+        .rest({
+          priority: 10,
+        })
+        .userIds(ids)
+        .sendPush({
+          isImportant: true,
+        })
+        .then((n) => n.sendToNtfy());
+    })();
+    
     return returnObj;
   };
 
