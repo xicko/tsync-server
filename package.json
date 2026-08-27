@@ -7,6 +7,7 @@
   "license": "UNLICENSED",
   "packageManager": "pnpm@11.18.0",
   "scripts": {
+    "preinstall": "npx only-allow pnpm",
     "build": "nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
