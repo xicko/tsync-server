@@ -126,18 +126,19 @@ export class OneSignal implements NeedsTitle, NeedsMessage, CanSend {
   }
 
   public sendToNtfy(): CanSend {
+    const url = process.env.NTFY_URL!;
     const topic = process.env.NTFY_TOPIC!;
 
-    if (!topic) {
-      this.logger.warn('NTFY_TOPIC is not defined');
+    if (!url || !topic) {
+      this.logger.warn('NTFY_URL OR NTFY_TOPIC not defined');
       return this;
-    }
+    };
 
     const title = this.payload.title;
     const message = this.payload.message;
 
     // eslint-disable-next-line @typescript-eslint/no-floating-promises
-    axios.post(`https://ntfy.sh/${topic}`, message, {
+    axios.post(`${url}/${topic}`, message, {
       headers: title
         ? {
             Title: title,
