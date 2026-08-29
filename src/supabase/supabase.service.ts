@@ -1,7 +1,6 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import '@supabase/storage-js';
-import 'multer';
+import type { StorageError } from '@supabase/storage-js';
 
 @Injectable()
 export class SupabaseService {

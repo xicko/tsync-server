@@ -2,7 +2,6 @@
 import { BadRequestException, Injectable, InternalServerErrorException, Logger, NotFoundException, NotImplementedException, OnModuleInit } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
-import 'multer';
 import { StorageFile } from 'src/schemas/storage-file.schema';
 import { SupabaseService } from 'src/supabase/supabase.service';
 import { DevicesDB } from 'src/devices/devices.db';

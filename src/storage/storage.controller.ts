@@ -1,9 +1,8 @@
-import { BadRequestException, Body, Controller, Delete, ForbiddenException, Get, HttpCode, HttpStatus, Param, Post, Query, Req, Res, StreamableFile, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { BadRequestException, Controller, Delete, ForbiddenException, Get, HttpCode, HttpStatus, Param, Post, Query, Req, Res, StreamableFile, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
 import { StorageService } from './storage.service';
 import type { Request, Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { TailscaleIpGuard } from 'src/guards/tailscale-ip.guard';
-import 'multer';
 import type { ReqQuery } from 'src/types/request.interface';
 import { getClientIp } from 'src/utils/network';
 import { DevicesDB } from 'src/devices/devices.db';
