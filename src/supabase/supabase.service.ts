@@ -55,4 +55,13 @@ export class SupabaseService {
       .from(bucket)
       .remove([path]);
   }
+
+  async deleteFileBulk(
+    paths: string[],
+    bucket: string = process.env.SUPABASE_STORAGE_BUCKET_NAME || 'tsync-storage'
+  ) {
+    return await this.supabase.storage
+      .from(bucket)
+      .remove(paths);
+  }
 }

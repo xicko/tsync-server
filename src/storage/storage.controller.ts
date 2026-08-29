@@ -1,4 +1,4 @@
-import { Controller, Delete, ForbiddenException, Get, HttpCode, HttpStatus, Param, Post, Query, Req, Res, StreamableFile, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, ForbiddenException, Get, HttpCode, HttpStatus, Param, Post, Query, Req, Res, StreamableFile, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
 import { StorageService } from './storage.service';
 import type { Request, Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -7,6 +7,7 @@ import 'multer';
 import type { ReqQuery } from 'src/types/request.interface';
 import { getClientIp } from 'src/utils/network';
 import { DevicesDB } from 'src/devices/devices.db';
+import { isUnixMs } from 'src/utils/date';
 
 @Controller('storage')
 export class StorageController {
@@ -18,14 +19,21 @@ export class StorageController {
   @Post()
   @UseInterceptors(FileInterceptor('file'))
   @UseGuards(TailscaleIpGuard)
-  async uploadFile(@Req() req: Request, @UploadedFile() file: Express.Multer.File) {
+  async uploadFile(@Req() req: Request, @UploadedFile() file: Express.Multer.File, @Query() query: ReqQuery & { expiry: unknown }) {
     const clientIp = getClientIp(req);
     const devices = (await this.devicesDb.findAll()) || [];
     const tailscaleDevice = devices.find((d) => d.addresses.includes(clientIp));
-
     if (!tailscaleDevice) throw new ForbiddenException('Device not found in Tailnet');
 
-    return await this.storageService.uploadFile(tailscaleDevice, file);
+    const expiry: Date | null = (() => {
+      const field = query?.expiry;
+      if (!field) return null;
+      const num = Number(field);
+      if (isNaN(num) || !isUnixMs(field) || num <= Date.now()) throw new BadRequestException('Expiry must be a valid future date in unix milliseconds');
+      return new Date(num);
+    })();
+
+    return await this.storageService.uploadFile(tailscaleDevice, expiry, file);
   }
 
   @Get()

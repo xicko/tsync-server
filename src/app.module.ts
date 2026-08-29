@@ -20,6 +20,7 @@ import {
 import { SettingsModule } from './global/settings/settings.module';
 import { SupabaseService } from './supabase/supabase.service';
 import { StorageModule } from './storage/storage.module';
+import { StorageFile, StorageFileSchema } from './schemas/storage-file.schema';
 
 dotenv.config();
 
@@ -40,6 +41,7 @@ dotenv.config();
       { name: CronConfig.name, schema: CronConfigSchema },
       { name: CronLog.name, schema: CronLogSchema },
       { name: NotificationsSyncLog.name, schema: NotificationsSyncLogSchema },
+      { name: StorageFile.name, schema: StorageFileSchema },
     ]),
   ],
   controllers: [AppController, CronsController],

@@ -10,6 +10,7 @@ import { EventsGateway } from 'src/events/events.gateway';
 import { PaginationResponse, ReqQuery } from 'src/types/request.interface';
 import { TailscaleDevice } from 'src/types/tailscale.interface';
 import { OneSignal } from 'src/utils/onesignal';
+import { Cron, CronExpression } from '@nestjs/schedule';
 
 @Injectable()
 export class StorageService implements OnModuleInit {
@@ -31,9 +32,10 @@ export class StorageService implements OnModuleInit {
 
   async uploadFile(
     tailscaleDevice: TailscaleDevice,
+    expiry: Date | null,
     file: Express.Multer.File,
     bucket?: string,
-  ) {
+  ) {    
     if (!file) throw new BadRequestException('No file given.');
     
     const isBelow50mb = file.size < this.FIFTY_MB_IN_BYTES;
@@ -61,6 +63,7 @@ export class StorageService implements OnModuleInit {
       storedIn: 'supabase',
       sizeBytes: file.size,
       mimetype: file.mimetype,
+      expiresAt: expiry ?? undefined,
     };
     
     const upload = (await this.storageFileModel.create(fileItem)).toObject();
@@ -189,8 +192,56 @@ export class StorageService implements OnModuleInit {
       name: d.name,
       sizeBytes: d.sizeBytes,
       mimetype: d.mimetype,
+      expiresAt: d.expiresAt,
       createdAt: d.createdAt,
       updatedAt: d.updatedAt,
     };
   };
+
+  @Cron(CronExpression.EVERY_10_SECONDS)
+  async storageCleanup() {
+    const now = new Date();
+
+    try {
+      const query = { expiresAt: { $lte: now } };
+      const files = await this.storageFileModel.find(query).lean();
+      if (files.length < 1) {
+        this.logger.debug('No files to cleanup');
+        return;
+      };
+
+      const successfulFiles: StorageFile[] = [];
+      const hostFiles: StorageFile[] = []; // TODO
+      const supabaseFiles: StorageFile[] = [];
+      files.forEach((f) => {
+        if (f.storedIn === 'host') hostFiles.push(f);
+        if (f.storedIn === 'supabase') supabaseFiles.push(f);
+      });
+
+      for (const sF of supabaseFiles) {
+        const { error } = await this.supabaseService.deleteFile(sF.path, sF.supabaseBucket);
+        if (!error) {
+          successfulFiles.push(sF);
+          const fileId = String((sF as StorageFile & { _id: string })._id);
+          this.eventsGateway.server.emit('storage', 'delete', fileId);
+        } else {
+          this.logger.error(`Failed to delete Supabase file ${sF.path}:`, error);
+        };
+      };
+
+      if (successfulFiles.length > 0) {
+        const deleted = await this.storageFileModel.deleteMany({
+          ...query,
+          _id: {
+            $in: successfulFiles.map((f) => (f as StorageFile & { _id: string })._id),
+          },
+        });
+
+        this.logger.debug(`storageCleanup files cleaned: ${deleted.deletedCount}`);
+      };
+      this.logger.debug(`storageCleanup files failed: ${files.length - successfulFiles.length}`);
+    } catch (error) {
+      this.logger.error('storageCleanup error:', error);
+    }
+  }
 }
