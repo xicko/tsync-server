@@ -30,6 +30,8 @@ export class StorageFile {
   @Prop({ required: false, type: Date })
   expiresAt?: Date;
 
+  // TODO: add MD5/SHA-256 Hash fields
+
   createdAt: Date;
   updatedAt: Date;
 }

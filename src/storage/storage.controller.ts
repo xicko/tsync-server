@@ -48,10 +48,10 @@ export class StorageController {
     @Param('id') id: string,
     @Res({ passthrough: true }) res: Response,
   ): Promise<StreamableFile> {
-    const { buffer, fileName, mimeType } = await this.storageService.downloadFile(id);
+    const { buffer, fileName, mimetype } = await this.storageService.downloadFile(id);
 
     res.set({
-      'Content-Type': mimeType,
+      'Content-Type': mimetype,
       'Content-Disposition': `attachment; filename="${encodeURIComponent(fileName)}"`,
     });
 

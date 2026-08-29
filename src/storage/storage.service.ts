@@ -11,6 +11,10 @@ import { PaginationResponse, ReqQuery } from 'src/types/request.interface';
 import { TailscaleDevice } from 'src/types/tailscale.interface';
 import { OneSignal } from 'src/utils/onesignal';
 import { Cron, CronExpression } from '@nestjs/schedule';
+import { runCommandSpawn } from 'src/utils/shell';
+import path from 'node:path';
+import { readFile, writeFile } from 'node:fs/promises';
+import { fileTypeFromBuffer, fileTypeFromFile } from 'file-type';
 
 @Injectable()
 export class StorageService implements OnModuleInit {
@@ -28,6 +32,34 @@ export class StorageService implements OnModuleInit {
     const { data, error } = await this.supabaseService.createBucket();
     if (error) this.logger.debug('Supabase storage bucket creation error:', error.message);
     if (data) this.logger.debug('Supabase storage bucket created:', data.name);
+
+    runCommandSpawn('sh', [
+      './src/scripts/storage/init.sh',
+    ]).then(() => this.logger.debug('Host storage init'));
+  };
+
+  // TODO: will use ReadableStream instead
+  private async writeBuffer(buffer: Buffer, filePath: string, bucket: string = '/var/tsync/storage') {
+    const joinedPath = path.join(bucket, filePath);
+    await writeFile(joinedPath, buffer, { mode: 0o600 });
+    return {
+      bucket,
+      path: filePath,
+      fullPath: joinedPath,
+    };
+  };
+
+  private async readBuffer(filePath: string, bucket: string = '/var/tsync/storage') {
+    const joinedPath = path.join(bucket, filePath);
+    const file = await readFile(joinedPath);
+    const ft = await fileTypeFromBuffer(file.buffer);
+    return {
+      bucket,
+      path: filePath,
+      fullPath: joinedPath,
+      buffer: file.buffer,
+      mimetype: ft?.mime ?? 'application/octet-stream'
+    };
   };
 
   async uploadFile(
@@ -40,27 +72,32 @@ export class StorageService implements OnModuleInit {
     
     const isBelow50mb = file.size < this.FIFTY_MB_IN_BYTES;
 
-    if (!isBelow50mb) {
-      // TODO
-      this.logger.debug(`Diff: ${file.size - this.FIFTY_MB_IN_BYTES}`);
-      throw new NotImplementedException('Uploads above 50mb are not implemented.');
-    };
-
     const fileExt = file.originalname.split('.').pop();
     const filePath = `${crypto.randomUUID()}.${fileExt}`;
 
-    const { data, error } = await this.supabaseService.uploadFile(file, filePath, bucket);
-    if (error || !data) {
-      this.logger.error(`Supabase upload failed for file ${file.originalname}:`, error);
-      throw new InternalServerErrorException('Failed to upload file to storage provider.');
-    };
+    let uploadPath: string = '';
+    let storedIn: 'host' | 'supabase';
+
+    if (!isBelow50mb) {
+      const data = await this.writeBuffer(file.buffer, filePath);
+      uploadPath = data.path;
+      storedIn = 'host';
+    } else {
+      const { data, error } = await this.supabaseService.uploadFile(file, filePath, bucket);
+      if (error || !data) {
+        this.logger.error(`Supabase upload failed for file ${file.originalname}:`, error);
+        throw new InternalServerErrorException('Failed to upload file to storage provider.');
+      };
+      uploadPath = data.path;
+      storedIn = 'supabase';
+    }
 
     const fileItem: Omit<StorageFile, 'createdAt' | 'updatedAt'> = {
       tailscaleId: tailscaleDevice.id,
       name: file.originalname,
-      path: data.path,
-      supabaseBucket: bucket || process.env.SUPABASE_STORAGE_BUCKET_NAME || 'tsync-storage',
-      storedIn: 'supabase',
+      path: uploadPath,
+      supabaseBucket: storedIn === 'supabase' ? (bucket || process.env.SUPABASE_STORAGE_BUCKET_NAME || 'tsync-storage') : undefined,
+      storedIn,
       sizeBytes: file.size,
       mimetype: file.mimetype,
       expiresAt: expiry ?? undefined,
@@ -68,7 +105,7 @@ export class StorageService implements OnModuleInit {
     
     const upload = (await this.storageFileModel.create(fileItem)).toObject();
     if (!upload._id) {
-      void this.supabaseService.deleteFile(data.path);
+      void this.supabaseService.deleteFile(uploadPath);
       throw new InternalServerErrorException('Failed to upload file to storage provider.');
     }
 
@@ -142,23 +179,28 @@ export class StorageService implements OnModuleInit {
       throw new NotFoundException(`File with ID: ${id} was not found.`);
     };
 
+    let buffer: Buffer<ArrayBuffer>;
+    let mimetype: string = 'application/octet-stream';
+
     if (storedFileInfo.storedIn === 'host') {
-      throw new NotImplementedException('Host file storage method is not implemented yet.');
+      const read = await this.readBuffer(storedFileInfo.path);
+      buffer = Buffer.from(read.buffer);
+      mimetype = read.mimetype;
+    } else {
+      const { data: supabaseData, error } = await this.supabaseService.downloadFile(storedFileInfo.path);
+      if (error || !supabaseData) {
+        this.logger.error(`Supabase download failed for path ${storedFileInfo.path}:`, error);
+        throw new InternalServerErrorException('Failed to get file from storage provider.');
+      }
+
+      buffer = Buffer.from(await supabaseData.arrayBuffer());
+      mimetype = supabaseData.type;
     };
-
-    const { data, error } = await this.supabaseService.downloadFile(storedFileInfo.path);
-
-    if (error || !data) {
-      this.logger.error(`Supabase download failed for path ${storedFileInfo.path}:`, error);
-      throw new InternalServerErrorException('Failed to get file from storage provider.');
-    }
-
-    const buffer = Buffer.from(await data.arrayBuffer());
 
     return {
       buffer,
       fileName: storedFileInfo.name,
-      mimeType: data.type || 'application/octet-stream',
+      mimetype,
     };
   };
 
@@ -198,7 +240,7 @@ export class StorageService implements OnModuleInit {
     };
   };
 
-  @Cron(CronExpression.EVERY_10_SECONDS)
+  @Cron(CronExpression.EVERY_3_HOURS)
   async storageCleanup() {
     const now = new Date();
 
