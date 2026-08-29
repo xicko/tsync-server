@@ -8,7 +8,6 @@ import { DevicesModule } from './devices/devices.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { TasksService } from './tasks/tasks.service';
 import { MongooseModule } from '@nestjs/mongoose';
-import { SheetRow, SheetRowSchema } from './schemas/sheet-row.schema';
 import { CronConfig, CronConfigSchema } from './schemas/cron-config.schema';
 import { CronLog, CronLogSchema } from './schemas/cron-log.schema';
 import { CronsController } from './crons/crons.controller';
@@ -21,7 +20,6 @@ import {
 import { SettingsModule } from './global/settings/settings.module';
 import { SupabaseService } from './supabase/supabase.service';
 import { StorageModule } from './storage/storage.module';
-import { StorageFile, StorageFileSchema } from './schemas/storage-file.schema';
 
 dotenv.config();
 
@@ -39,7 +37,6 @@ dotenv.config();
       dbName: process.env.DB_NAME,
     }),
     MongooseModule.forFeature([
-      { name: SheetRow.name, schema: SheetRowSchema },
       { name: CronConfig.name, schema: CronConfigSchema },
       { name: CronLog.name, schema: CronLogSchema },
       { name: NotificationsSyncLog.name, schema: NotificationsSyncLogSchema },
