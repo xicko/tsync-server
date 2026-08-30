@@ -12,7 +12,7 @@ import { OneSignal } from 'src/utils/onesignal';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { runCommandSpawn } from 'src/utils/shell';
 import path from 'node:path';
-import { readFile, writeFile } from 'node:fs/promises';
+import { lstat, readFile, rm, writeFile } from 'node:fs/promises';
 import { fileTypeFromBuffer, fileTypeFromFile } from 'file-type';
 
 @Injectable()
@@ -58,6 +58,24 @@ export class StorageService implements OnModuleInit {
       fullPath: joinedPath,
       buffer: file.buffer,
       mimetype: ft?.mime ?? 'application/octet-stream'
+    };
+  };
+
+  private async deleteHostFile(filePath: string, bucket: string = '/var/tsync/storage'): Promise<boolean | null> {
+    const safeFilepath = path.normalize(filePath).replace(/^(\.\.[\/\\])+/, '');
+    const targetPath = path.resolve(bucket, safeFilepath);
+
+    try {
+      const stats = await lstat(targetPath);
+      if (stats.isDirectory()) {
+        this.logger.debug(`Target is a dir, not a file ${filePath}`);
+        return null;
+      }
+      await rm(targetPath, { force: true });
+      return true;
+    } catch (error: any) {
+      this.logger.error(`Host file deletion error:`, error);
+      return false;
     };
   };
 
@@ -210,16 +228,22 @@ export class StorageService implements OnModuleInit {
       throw new NotFoundException(`File with ID: ${id} was not found.`);
     };
 
+    let didFail: boolean = false;
+
     if (storedFileInfo.storedIn === 'host') {
-      throw new NotImplementedException('Host file storage method is not implemented yet.');
+      const delRes = await this.deleteHostFile(storedFileInfo.path);
+
+      if (!delRes) didFail = true;
+    } else {
+      const { data, error } = await this.supabaseService.deleteFile(storedFileInfo.path, storedFileInfo.supabaseBucket);
+
+      if (error || !data) {
+        this.logger.error(`Supabase delete failed for path ${storedFileInfo.path}:`, error);
+        didFail = true;
+      };
     };
 
-    const { data, error } = await this.supabaseService.deleteFile(storedFileInfo.path, storedFileInfo.supabaseBucket);
-
-    if (error) {
-      this.logger.error(`Supabase delete failed for path ${storedFileInfo.path}:`, error);
-      throw new InternalServerErrorException('Failed to delete file from storage provider.');
-    }
+    if (didFail) throw new InternalServerErrorException('Failed to delete file from storage provider.');
 
     await this.storageFileModel.findByIdAndDelete(id);
 
@@ -252,22 +276,55 @@ export class StorageService implements OnModuleInit {
       };
 
       const successfulFiles: StorageFile[] = [];
-      const hostFiles: StorageFile[] = []; // TODO
-      const supabaseFiles: StorageFile[] = [];
-      files.forEach((f) => {
-        if (f.storedIn === 'host') hostFiles.push(f);
-        if (f.storedIn === 'supabase') supabaseFiles.push(f);
-      });
+      const hostFiles: StorageFile[] = [];
+      const spBuckets = new Map<string, StorageFile[]>();
 
-      for (const sF of supabaseFiles) {
-        const { error } = await this.supabaseService.deleteFile(sF.path, sF.supabaseBucket);
-        if (!error) {
-          successfulFiles.push(sF);
-          const fileId = String((sF as StorageFile & { _id: string })._id);
-          this.eventsGateway.server.emit('storage', 'delete', fileId);
-        } else {
-          this.logger.error(`Failed to delete Supabase file ${sF.path}:`, error);
+      const emitDeletionViaSocket = (file: StorageFile) => {
+        const id = (file as StorageFile & { _id: string })?._id;
+        if (!id) return;
+        this.eventsGateway.server.emit('storage', 'delete', String(id));
+      };
+
+      for (const f of files) {
+        if (f.storedIn === 'host') hostFiles.push(f)
+
+        else if (f.storedIn === 'supabase') {
+          const bucket = f?.supabaseBucket || process.env.SUPABASE_STORAGE_BUCKET_NAME || 'tsync-storage';
+          const existing = spBuckets.get(bucket) || [];
+          existing.push(f);
+          spBuckets.set(bucket, existing);
+        }
+      };
+
+      if (hostFiles.length > 0) await Promise.allSettled(hostFiles.map(async (hF) => {
+        try {
+          const ok = await this.deleteHostFile(hF.path);
+          if (ok) {
+            successfulFiles.push(hF);
+            emitDeletionViaSocket(hF);
+          } else {
+            this.logger.error(`Failed to delete host file: ${hF.path}`);
+          }
+        } catch (error) {
+          this.logger.error(`Exception deleting host file ${hF.path}:`, error);
         };
+      }));
+
+      if (spBuckets.size > 0) for (const [bucketName, bucketFiles] of spBuckets.entries()) {
+        try {
+          const { data, error } = await this.supabaseService.deleteFileBulk(bucketFiles.map((f) => f.path), bucketName);
+          if (error || !data) {
+            this.logger.error(`Failed to delete ${bucketFiles.length} Supabase files in bucket: ${bucketName}`, error);
+            continue;
+          };
+
+          for (const f of bucketFiles) {
+            successfulFiles.push(f);
+            emitDeletionViaSocket(f);
+          };
+        } catch (error) {
+          this.logger.error(`Error during Supabase bulk delete in ${bucketName}:`, error);
+        }
       };
 
       if (successfulFiles.length > 0) {
