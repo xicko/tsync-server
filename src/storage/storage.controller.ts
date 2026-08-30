@@ -18,7 +18,9 @@ export class StorageController {
   @Post()
   @UseInterceptors(FileInterceptor('file'))
   @UseGuards(TailscaleIpGuard)
-  async uploadFile(@Req() req: Request, @UploadedFile() file: Express.Multer.File, @Query() query: ReqQuery & { expiry: unknown }) {
+  async uploadFile(@Req() req: Request, @UploadedFile() file: Express.Multer.File, @Query() query: ReqQuery & { sha256: string, md5: string, expiry: unknown }) {
+    if (!query.sha256 || !query.md5) throw new BadRequestException('SHA256 or MD5 hashes missing');
+
     const clientIp = getClientIp(req);
     const devices = (await this.devicesDb.findAll()) || [];
     const tailscaleDevice = devices.find((d) => d.addresses.includes(clientIp));
@@ -32,7 +34,13 @@ export class StorageController {
       return new Date(num);
     })();
 
-    return await this.storageService.uploadFile(tailscaleDevice, expiry, file);
+    return await this.storageService.uploadFile(
+      tailscaleDevice,
+      query.sha256,
+      query.md5,
+      expiry,
+      file,
+    );
   }
 
   @Get()

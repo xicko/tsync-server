@@ -81,10 +81,12 @@ export class StorageService implements OnModuleInit {
 
   async uploadFile(
     tailscaleDevice: TailscaleDevice,
+    sha256: string, // TODO
+    md5: string, // TODO
     expiry: Date | null,
     file: Express.Multer.File,
     bucket?: string,
-  ) {    
+  ) {
     if (!file) throw new BadRequestException('No file given.');
     
     const isBelow50mb = file.size < this.FIFTY_MB_IN_BYTES;
@@ -117,6 +119,8 @@ export class StorageService implements OnModuleInit {
       storedIn,
       sizeBytes: file.size,
       mimetype: file.mimetype,
+      sha256,
+      md5,
       expiresAt: expiry ?? undefined,
     };
     
@@ -257,6 +261,8 @@ export class StorageService implements OnModuleInit {
       name: d.name,
       sizeBytes: d.sizeBytes,
       mimetype: d.mimetype,
+      sha256: d.sha256,
+      md5: d.md5,
       expiresAt: d.expiresAt,
       createdAt: d.createdAt,
       updatedAt: d.updatedAt,
@@ -341,5 +347,5 @@ export class StorageService implements OnModuleInit {
     } catch (error) {
       this.logger.error('storageCleanup error:', error);
     }
-  }
+  };
 }

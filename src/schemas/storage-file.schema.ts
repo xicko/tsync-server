@@ -27,10 +27,17 @@ export class StorageFile {
   @Prop({ required: false, type: String })
   mimetype?: string;
 
+  @Prop({ required: true, type: String })
+  sha256!: string;
+
+  @Prop({ required: true, type: String })
+  md5!: string;
+
+  @Prop({ required: false, type: Date })
+  corruptedAt?: boolean;
+
   @Prop({ required: false, type: Date })
   expiresAt?: Date;
-
-  // TODO: add MD5/SHA-256 Hash fields
 
   createdAt: Date;
   updatedAt: Date;
