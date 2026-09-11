@@ -18,6 +18,9 @@ import {
   NotificationsSyncLogSchema,
 } from './schemas/notifications-sync-log.schema';
 import { SettingsModule } from './global/settings/settings.module';
+import { SupabaseService } from './supabase/supabase.service';
+import { StorageModule } from './storage/storage.module';
+import { StorageFile, StorageFileSchema } from './schemas/storage-file.schema';
 
 dotenv.config();
 
@@ -29,6 +32,7 @@ dotenv.config();
     AdbModule,
     DevicesModule,
     SettingsModule,
+    StorageModule,
     ScheduleModule.forRoot(),
     MongooseModule.forRoot(process.env.MONGO_URI || '', {
       dbName: process.env.DB_NAME,
@@ -37,9 +41,11 @@ dotenv.config();
       { name: CronConfig.name, schema: CronConfigSchema },
       { name: CronLog.name, schema: CronLogSchema },
       { name: NotificationsSyncLog.name, schema: NotificationsSyncLogSchema },
+      { name: StorageFile.name, schema: StorageFileSchema },
     ]),
   ],
   controllers: [AppController, CronsController],
-  providers: [AppService, TasksService],
+  providers: [AppService, TasksService, SupabaseService],
+  exports: [MongooseModule],
 })
 export class AppModule {}

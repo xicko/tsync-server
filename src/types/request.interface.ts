@@ -5,9 +5,9 @@ export interface ReqQuery {
 }
 
 export class PaginationResponse {
-  total: number;
-  page: number;
-  limit: number;
-  hasNext: boolean;
-  hasPrev: boolean;
+  total!: number;
+  page!: number;
+  limit!: number;
+  hasNext!: boolean;
+  hasPrev!: boolean;
 }
