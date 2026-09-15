@@ -28,7 +28,7 @@ dotenv.config();
   imports: [
     NotificationsSyncModule,
     EventsModule,
-    TelegramModule,
+    // TelegramModule, // disabled until reworked
     AdbModule,
     DevicesModule,
     SettingsModule,

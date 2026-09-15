@@ -49,7 +49,6 @@ export class TasksService implements OnModuleInit {
   async onModuleInit() {
     this.logger.log('Initializing dynamic cron jobs...');
     const defaultCrons = [
-      { name: 'handleSheetsCron', type: 'SHEETS', expression: CronExpression.EVERY_HOUR, data: {} },
       { name: 'handleServiceHealthCheckCron', type: 'HEALTHCHECK', expression: CronExpression.EVERY_MINUTE, data: {} },
     ];
 
