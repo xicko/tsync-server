@@ -10,7 +10,7 @@ export class CronConfig {
 
   @Prop({
     required: true,
-    enum: ['SHEETS', 'REMINDER', 'COUNT', 'HEALTHCHECK'],
+    enum: ['REMINDER', 'COUNT', 'HEALTHCHECK'],
   })
   type: string;
 
