@@ -1,5 +1,14 @@
 /* eslint-disable prettier/prettier */
-import { Injectable, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  HttpException,
+  Injectable,
+  InternalServerErrorException,
+  Logger,
+  NotFoundException,
+  NotImplementedException,
+} from '@nestjs/common';
 import getRedisClient from '../utils/redis';
 import { TailscaleDevice } from '../types/tailscale.interface';
 import { CollectedNotification } from './types/notifications-sync.interface';
@@ -33,16 +42,12 @@ export class NotificationsSyncService {
     req: Request,
     deviceId: string,
     body: CollectedNotification,
-  ): Promise<{ success: boolean }> {
+  ): Promise<void> {
     try {
       const devices = await this.devicesDb.findAll();
-      if (!devices) {
-        return { success: false };
-      }
+      if (!devices) throw new NotFoundException('No devices found');
       const device = devices.find((d) => d.id === deviceId);
-      if (!device) {
-        return { success: false };
-      }
+      if (!device) throw new NotFoundException('Device not found');
       
       if (body.type === 'android' && device.os === 'android') {
         const notification = body.android;
@@ -84,7 +89,7 @@ export class NotificationsSyncService {
 
         if (isBlocked) {
           this.logger.debug(`Notification from ${pn} blocked by denylist`);
-          return { success: false };
+          return;
         }
 
         const redisClient = await getRedisClient();
@@ -93,7 +98,7 @@ export class NotificationsSyncService {
         const lastNotification = await redisClient.get(redisKey);
         if (lastNotification !== null) {
           this.logger.debug('Duplicate notification blocked');
-          return { success: false };
+          return;
         }
 
         await redisClient.set(redisKey, '1', { expiration: { value: 30000, type: 'PX' } });
@@ -146,12 +151,12 @@ export class NotificationsSyncService {
         };
       } else {
         // TODO
+        throw new NotImplementedException('OS handler not implemented');
       }
-
-      return { success: true };
     } catch (error) {
+      if (error instanceof HttpException) throw error;
       this.logger.error(error);
-      return { success: false };
+      throw new InternalServerErrorException('Failed to process notification');
     }
   }
 
@@ -306,7 +311,6 @@ export class NotificationsSyncService {
       );
 
       return {
-        success: true,
         data: data.map((d) => ({
           ...d,
           icon: appsMap.get(d.android?.packageName || '') || undefined,
@@ -319,9 +323,7 @@ export class NotificationsSyncService {
       }
     } catch (error) {
       this.logger.error(error);
-      return {
-        success: false,
-      }
+      throw new InternalServerErrorException('Failed to fetch notifications');
     }
   }
 
@@ -341,7 +343,6 @@ export class NotificationsSyncService {
       ]);
 
       return {
-        success: true,
         data: res.map((r) => r.toObject()),
         pagination: {
           total,
@@ -353,9 +354,7 @@ export class NotificationsSyncService {
       }
     } catch (error) {
       this.logger.error(error);
-      return {
-        success: false,
-      }
+      throw new InternalServerErrorException('Failed to fetch denylist');
     }
   }
 
@@ -363,58 +362,40 @@ export class NotificationsSyncService {
     req: Request,
     body: CreateDenyDto,
   ) {
-    try {
-      const { type, text, packageIdentifier, tailscaleId } = body;
+    const { type, text, packageIdentifier, tailscaleId } = body;
 
-      if (type === 'text' && (!text || text.trim() === '')) {
-        return { success: false };
-      }
-      if (type === 'packageIdentifier' && (!packageIdentifier || packageIdentifier.trim() === '')) {
-        return { success: false };
-      }
-
-      const query: Record<string, any> = {
-        type,
-        tailscaleId: tailscaleId || null,
-      };
-      if (type === 'text' && text) query.text = text.trim();
-      if (type === 'packageIdentifier' && packageIdentifier) query.packageIdentifier = packageIdentifier.trim();
-
-      const existing = await this.notificationsSyncDenyModel.findOne(query);
-      if (existing) {
-        return { success: false };
-      }
-
-      const created = await this.notificationsSyncDenyModel.create({
-        type,
-        tailscaleId: tailscaleId || undefined,
-        text: type === 'text' && text ? text.trim() : undefined,
-        packageIdentifier: type === 'packageIdentifier' && packageIdentifier ? packageIdentifier.trim() : undefined,
-      });
-
-      return {
-        success: true,
-        data: created.toObject(),
-      };
-    } catch (error) {
-      this.logger.error(error);
-      return { success: false };
+    if (type === 'text' && (!text || text.trim() === '')) {
+      throw new BadRequestException('text is required for a text rule');
     }
+    if (type === 'packageIdentifier' && (!packageIdentifier || packageIdentifier.trim() === '')) {
+      throw new BadRequestException('packageIdentifier is required for a packageIdentifier rule');
+    }
+
+    const query: Record<string, any> = {
+      type,
+      tailscaleId: tailscaleId || null,
+    };
+    if (type === 'text' && text) query.text = text.trim();
+    if (type === 'packageIdentifier' && packageIdentifier) query.packageIdentifier = packageIdentifier.trim();
+
+    const existing = await this.notificationsSyncDenyModel.findOne(query);
+    if (existing) throw new ConflictException('Denylist rule already exists');
+
+    const created = await this.notificationsSyncDenyModel.create({
+      type,
+      tailscaleId: tailscaleId || undefined,
+      text: type === 'text' && text ? text.trim() : undefined,
+      packageIdentifier: type === 'packageIdentifier' && packageIdentifier ? packageIdentifier.trim() : undefined,
+    });
+
+    return created.toObject();
   }
 
   async deleteDeny(
     req: Request,
     id: string,
   ) {
-    try {
-      const deleted = await this.notificationsSyncDenyModel.findByIdAndDelete(id);
-      if (!deleted) {
-        return { success: false };
-      }
-      return { success: true };
-    } catch (error) {
-      this.logger.error(error);
-      return { success: false };
-    }
+    const deleted = await this.notificationsSyncDenyModel.findByIdAndDelete(id);
+    if (!deleted) throw new NotFoundException('Denylist rule not found');
   }
 }

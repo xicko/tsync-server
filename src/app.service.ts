@@ -10,12 +10,12 @@ export class AppService {
   ping(req: Request) {
     const ip = getClientIp(req);
     this.logger.debug(`ping from ${ip}`);
-    return 'true';
+    return { status: 'ok' };
   }
 
   getIp(req: Request) {
     const ip = getClientIp(req);
     this.logger.debug(`getIp from ${ip}`);
-    return ip;
+    return { ip };
   }
 }

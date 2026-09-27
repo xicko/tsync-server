@@ -1,4 +1,11 @@
-import { Injectable, Logger } from '@nestjs/common';
+/* eslint-disable prettier/prettier */
+import {
+  BadRequestException,
+  Injectable,
+  InternalServerErrorException,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { DevicesDB } from '../devices/devices.db';
 import getRedisClient from '../utils/redis';
 
@@ -9,43 +16,30 @@ export class AdbService {
   constructor(private readonly devicesDb: DevicesDB) {}
 
   async getConnectedAdbDevices(): Promise<string[]> {
-    try {
-      const redisClient = await getRedisClient();
-      const devices = await redisClient.get('connected_adb_devices');
-      if (!devices || typeof devices !== 'string') {
-        return [];
-      }
-      const parsed = JSON.parse(devices) as string[];
-      return parsed;
-    } catch (error) {
-      this.logger.error(error);
+    const redisClient = await getRedisClient();
+    const devices = await redisClient.get('connected_adb_devices');
+    if (!devices || typeof devices !== 'string') {
       return [];
     }
+    return JSON.parse(devices) as string[];
   }
 
   async setAdbDeviceIdentifier(deviceId: string, identifier: string | null) {
-    try {
-      const device = await this.devicesDb.findOne(deviceId);
-      if (!device) {
-        return { success: false };
-      }
-      const portNumber = Number(identifier);
-      if (isNaN(portNumber)) {
-        return { success: false };
-      }
+    const device = await this.devicesDb.findOne(deviceId);
+    if (!device) throw new NotFoundException('Device not found');
 
-      const updated = await this.devicesDb.updateAdditionals(deviceId, {
-        androidConfig: {
-          adb: {
-            port: identifier !== null ? portNumber : undefined,
-          },
+    const portNumber = Number(identifier);
+    if (isNaN(portNumber)) throw new BadRequestException('Identifier must be a number');
+
+    const updated = await this.devicesDb.updateAdditionals(deviceId, {
+      androidConfig: {
+        adb: {
+          port: identifier !== null ? portNumber : undefined,
         },
-      });
-
-      return { success: !!updated };
-    } catch (error) {
-      this.logger.error(error);
-      return { success: false };
-    }
+      },
+    });
+    if (!updated) throw new InternalServerErrorException('Failed to update ADB identifier');
+    
+    return updated;
   }
 }

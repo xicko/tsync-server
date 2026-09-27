@@ -1,6 +1,5 @@
-/* eslint-disable @typescript-eslint/require-await */
 /* eslint-disable prettier/prettier */
-import { Body, Controller, Delete, Get, Param, Post, Put } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, NotFoundException, Param, Patch, Post } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { CronConfig } from 'src/schemas/cron-config.schema';
@@ -40,45 +39,45 @@ export class CronsController {
     return result;
   }
 
-  @Put(':name')
+  @Patch(':name')
   async updateCron(
     @Param('name') name: string,
     @Body() body: { cronExpression: string; isActive: boolean; data?: any },
   ) {
-    await this.tasksService.updateCronJob(name, body.cronExpression, body.isActive, body.data);
-    return { success: true };
+    return await this.tasksService.updateCronJob(name, body.cronExpression, body.isActive, body.data);
   }
 
   @Post()
   async createCron(
     @Body() body: { name: string; type: string; cronExpression: string; data: any; isActive?: boolean },
   ) {
-    await this.tasksService.createCronJob(
+    return await this.tasksService.createCronJob(
       body.name,
       body.type,
       body.cronExpression,
       body.data,
       body.isActive ?? true
     );
-    return { success: true };
   }
 
   @Delete(':name')
+  @HttpCode(HttpStatus.NO_CONTENT)
   async deleteCron(@Param('name') name: string) {
     await this.tasksService.deleteCronJob(name);
-    return { success: true };
   }
 
   @Post('reinit/system')
+  @HttpCode(HttpStatus.NO_CONTENT)
   async reinitCrons() {
     await this.tasksService.reinitCronJobs();
-    return { success: true };
   }
 
   @Post(':name/trigger')
+  @HttpCode(HttpStatus.ACCEPTED)
   async triggerCron(@Param('name') name: string) {
+    const config = await this.cronConfigModel.findOne({ name });
+    if (!config) throw new NotFoundException('Cron job not found');
     this.tasksService.triggerCronJob(name).catch(() => {});
-    return { success: true };
   }
 
   @Get(':name/logs')

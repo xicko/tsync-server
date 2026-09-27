@@ -1,5 +1,5 @@
 /* eslint-disable prettier/prettier */
-import { Body, Controller, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
 import { DevicesService } from './devices.service';
 import type { Request } from 'express';
 import type { BatteryStatus } from 'src/types/tailscale.interface';
@@ -15,8 +15,9 @@ export class DevicesController {
   }
 
   @Post('/:tailscaleId/wol')
+  @HttpCode(HttpStatus.OK)
   async wakeOnLan(@Param('tailscaleId') tailscaleId: string) {
-    return await this.devicesService.wakeOnLan(tailscaleId);
+    await this.devicesService.wakeOnLan(tailscaleId);
   }
 
   @Patch('/:tailscaleId/mac-address')
@@ -30,7 +31,7 @@ export class DevicesController {
     );
   }
 
-  @Patch('/:tailscaleId/update-battery-status')
+  @Patch('/:tailscaleId/battery')
   @UseGuards(TailscaleDeviceIpGuard)
   async updateBatteryStatus(
     @Req() req: Request,

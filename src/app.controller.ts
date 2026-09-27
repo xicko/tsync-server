@@ -33,12 +33,12 @@ export class AppController {
   }
 
   @Get('/ping')
-  ping(@Req() req: Request): string { 
-    return this.appService.ping(req); 
+  ping(@Req() req: Request) {
+    return this.appService.ping(req);
   }
 
   @Get('/ip')
-  getIp(@Req() req: Request): string {
+  getIp(@Req() req: Request) {
     return this.appService.getIp(req);
   }
 }
