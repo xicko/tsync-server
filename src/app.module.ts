@@ -2,7 +2,6 @@ import { Module } from '@nestjs/common';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { EventsModule } from './events/events.module';
-import { TelegramModule } from './telegram/telegram.module';
 import { AdbModule } from './adb/adb.module';
 import { DevicesModule } from './devices/devices.module';
 import { ScheduleModule } from '@nestjs/schedule';
@@ -28,7 +27,6 @@ dotenv.config();
   imports: [
     NotificationsSyncModule,
     EventsModule,
-    // TelegramModule, // disabled until reworked
     AdbModule,
     DevicesModule,
     SettingsModule,
