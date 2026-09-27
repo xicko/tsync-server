@@ -419,7 +419,7 @@ export class TasksService implements OnModuleInit {
     const addresses = parsed.map((device) => device.addresses[0]);
     if (addresses.length === 0) throw new Error('No Tailscale addresses found');
 
-    const port = process.env.WOL_SERVICE_PORT || '2500';
+    const { port } = await this.settingsDb.getWol();
 
     const results = await Promise.allSettled(addresses.map(async (address) => {
       const url = `http://${address}:${port}/`;

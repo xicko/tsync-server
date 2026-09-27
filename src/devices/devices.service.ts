@@ -10,12 +10,16 @@ import { getClientIp } from '../utils/network';
 import { OneSignal } from '../utils/onesignal';
 import { DevicesDB } from './devices.db';
 import { getReadableDeviceName } from './utils/device';
+import { SettingsDB } from '../global/settings/settings.db';
 
 @Injectable()
 export class DevicesService {
   private readonly logger = new Logger(DevicesService.name);
 
-  constructor(private readonly devicesDb: DevicesDB) {}
+  constructor(
+    private readonly devicesDb: DevicesDB,
+    private readonly settingsDb: SettingsDB,
+  ) {}
 
   async getDevices(req?: Request): Promise<TailscaleDevicesResponse> {
     let ip: string | null = null;
@@ -32,6 +36,12 @@ export class DevicesService {
   }
 
   async wakeOnLan(deviceId: string): Promise<{ success: boolean }> {
+    const wol = await this.settingsDb.getWol();
+    if (!wol.enabled) {
+      this.logger.debug('wakeOnLan skipped: WOL disabled globally');
+      return { success: false };
+    }
+
     const redisClient = await getRedisClient();
     const parsed = await this.devicesDb.findAll();
     if (!parsed) return { success: false };
@@ -52,7 +62,7 @@ export class DevicesService {
       addresses.map(async (address) => {
         try {
           const response = await fetch(
-            `http://${address}:${process.env.WOL_SERVICE_PORT}/wake`,
+            `http://${address}:${wol.port}/wake`,
             {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
