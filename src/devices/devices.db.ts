@@ -1,6 +1,9 @@
 /* eslint-disable prettier/prettier */
 import { Injectable, Logger } from '@nestjs/common';
-import { TailscaleDevice, TailscaleDeviceAdditionals } from 'src/types/tailscale.interface';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
+import { BatteryStatus, TailscaleDevice } from 'src/types/tailscale.interface';
+import { DeviceConfig, DeviceConfigUpdate } from 'src/schemas/device-config.schema';
 import getRedisClient from 'src/utils/redis';
 
 @Injectable()
@@ -8,23 +11,23 @@ export class DevicesDB {
   private logger = new Logger(DevicesDB.name);
 
   private key = 'devices';
+  private batteryKey = 'device_batteries';
 
-  async findAll(): Promise<TailscaleDevice[] | null> {
+  constructor(
+    @InjectModel(DeviceConfig.name) private deviceConfigModel: Model<DeviceConfig>,
+  ) {}
+
+  async findAllRaw(): Promise<TailscaleDevice[] | null> {
     try {
       const redisClient = await getRedisClient();
       const devices = await redisClient.get(this.key);
       if (!devices || typeof devices !== 'string') return null;
-      const devicesParsed: TailscaleDevice[] = JSON.parse(devices);
-      return devicesParsed;
+
+      return JSON.parse(devices) as TailscaleDevice[];
     } catch (error) {
       this.logger.error(error);
       return null;
     }
-  }
-
-  async findOne(id: string): Promise<TailscaleDevice | null> {
-    const devices = await this.findAll();
-    return devices?.find((d) => d.id === id) || null;
   }
 
   async saveAll(
@@ -35,6 +38,7 @@ export class DevicesDB {
       const redisClient = await getRedisClient();
       await redisClient.set(this.key, JSON.stringify(data));
       if (returnNew === true) return this.findAll();
+
       return null;
     } catch (error) {
       this.logger.error(error);
@@ -42,65 +46,123 @@ export class DevicesDB {
     }
   }
 
-  async saveOne(data: TailscaleDevice): Promise<boolean> {
+  async findAll(): Promise<TailscaleDevice[] | null> {
+    const raw = await this.findAllRaw();
+    if (!raw) return null;
+
+    const [configs, batteries] = await Promise.all([
+      this.getAllConfigs(),
+      this.getAllBatteries(),
+    ]);
+
+    const configMap = new Map(configs.map((c) => [c._id, c]));
+    return raw.map((d) => this.mergeDevice(d, configMap.get(d.id), batteries[d.id]),
+    );
+  }
+
+  async findOne(id: string): Promise<TailscaleDevice | null> {
+    const devices = await this.findAll();
+    return devices?.find((d) => d.id === id) || null;
+  }
+
+  private mergeDevice(
+    device: TailscaleDevice,
+    config?: DeviceConfig,
+    battery?: BatteryStatus,
+  ): TailscaleDevice {
+    const merged: TailscaleDevice = {
+      ...device,
+      batterySync: config?.batterySync ?? true,
+      battery,
+    };
+
+    const macAddress = config?.windowsConfig?.macAddress;
+    if (macAddress) {
+      merged.windowsConfig = { 
+        ...device.windowsConfig, macAddress,
+      };
+    };
+
+    const userAdbPort = config?.androidConfig?.adb?.port;
+    if (userAdbPort != null) {
+      merged.androidConfig = {
+        ...device.androidConfig,
+        adb: {
+          ...device.androidConfig?.adb,
+          port: userAdbPort
+        },
+      };
+    };
+
+    return merged;
+  }
+
+  async getAllConfigs(): Promise<DeviceConfig[]> {
     try {
-      const arr = [data];
-      const existingAll = await this.findAll();
-      if (!existingAll || (existingAll && existingAll.length === 0)) {
-        await this.saveAll(arr);
-        return true;
-      }
-      const excluded = existingAll.filter((f) => f.id !== data.id);
-      const mod = [data, ...excluded];
-      await this.saveAll(mod);
-      return true;
+      return await this.deviceConfigModel.find().lean();
     } catch (error) {
       this.logger.error(error);
-      return false;
+      return [];
     }
   }
 
-  async updateAdditionals(
+  async getConfig(id: string): Promise<DeviceConfig | null> {
+    try {
+      return await this.deviceConfigModel.findById(id).lean();
+    } catch (error) {
+      this.logger.error(error);
+      return null;
+    }
+  }
+
+  async updateConfig(
     id: string,
-    additionals: Partial<TailscaleDeviceAdditionals>,
-  ): Promise<TailscaleDevice | null> {
+    update: DeviceConfigUpdate,
+  ): Promise<DeviceConfig | null> {
     try {
-      const devices = await this.findAll();
-      if (!devices) return null;
+      const set: Record<string, any> = {};
+      if (update.batterySync !== undefined) set['batterySync'] = update.batterySync;
+      if (update.androidConfig?.adb?.port !== undefined) set['androidConfig.adb.port'] = update.androidConfig.adb.port;
+      if (update.windowsConfig?.macAddress !== undefined) set['windowsConfig.macAddress'] = update.windowsConfig.macAddress;
 
-      let updatedDevice: TailscaleDevice | null = null;
-
-      const updatedDevices = devices.map((device) => {
-        if (device.id !== id) return device;
-
-        const merged: TailscaleDevice = {
-          ...device,
-          ...additionals,
-          androidConfig: additionals.androidConfig !== undefined ? {
-            ...device.androidConfig,
-            ...additionals.androidConfig,
-            adb: additionals.androidConfig.adb !== undefined ? {
-              ...device.androidConfig?.adb,
-              ...additionals.androidConfig.adb,
-            } : device.androidConfig?.adb,
-          } : device.androidConfig,
-          windowsConfig: additionals.windowsConfig !== undefined ? {
-            ...device.windowsConfig,
-            ...additionals.windowsConfig,
-          } : device.windowsConfig,
-        };
-
-        updatedDevice = merged;
-        return merged;
-      });
-
-      if (!updatedDevice) return null;
-
-      await this.saveAll(updatedDevices);
-      return updatedDevice;
+      return await this.deviceConfigModel
+        .findByIdAndUpdate(
+          id,
+          { $set: set },
+          { upsert: true, new: true, setDefaultsOnInsert: true },
+        )
+        .lean();
     } catch (error) {
       this.logger.error(error);
       return null;
+    }
+  }
+
+  async getAllBatteries(): Promise<Record<string, BatteryStatus>> {
+    try {
+      const redisClient = await getRedisClient();
+      const raw = await redisClient.hGetAll(this.batteryKey);
+      const result: Record<string, BatteryStatus> = {};
+      for (const [id, value] of Object.entries(raw)) {
+        try {
+          result[id] = JSON.parse(value as string) as BatteryStatus;
+        } catch {
+          continue;
+        }
+      }
+      return result;
+    } catch (error) {
+      this.logger.error(error);
+      return {};
+    }
+  }
+
+  async setBattery(id: string, battery: BatteryStatus): Promise<void> {
+    try {
+      const redisClient = await getRedisClient();
+      await redisClient.hSet(this.batteryKey, id, JSON.stringify(battery));
+    } catch (error) {
+      this.logger.error(error);
     }
   }
 }

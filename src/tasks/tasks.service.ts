@@ -206,11 +206,11 @@ export class TasksService implements OnModuleInit {
   @Cron(CronExpression.EVERY_30_SECONDS)
   async handleDevicesCron() {
     const existingDevicesMap = new Map<string, TailscaleDevice>();
-    const existingDevices = (await this.devicesDb.findAll()) || [];
+    const existingDevices = (await this.devicesDb.findAllRaw()) || [];
     existingDevices.forEach((p) => existingDevicesMap.set(p.id, p));
 
     const latestDevicesMap = new Map<string, TailscaleDevice>();
-    const latestDevices = (await this.getDevices(existingDevicesMap)).devices || [];
+    const latestDevices = (await this.getDevices()).devices || [];
     latestDevices.forEach((n) => latestDevicesMap.set(n.id, n));
 
     const updatedDevices: TailscaleDevice[] = [];
@@ -265,7 +265,7 @@ export class TasksService implements OnModuleInit {
 
     this.logger.debug('Devices updated');
   }
-  private async getDevices(prevMap?: Map<string, TailscaleDevice>) {
+  private async getDevices() {
     const url = process.env.TAILNET_BASE_URL;
     const apiKey = process.env.TAILNET_API_KEY;
 
@@ -286,39 +286,26 @@ export class TasksService implements OnModuleInit {
     const connectedAdbDevices = await redisClient.get('connected_adb_devices');
     const connectedAdbDevicesParsed: string[] = connectedAdbDevices && typeof connectedAdbDevices === 'string'
       ? JSON.parse(connectedAdbDevices)
-      : [];      
+      : [];
 
     if (resJson.devices) {
       const modifiedDevices: TailscaleDevice[] = resJson.devices.map((device) => {
-        const prevDevice = prevMap?.get(device.id);
-
         const connectedMatch = connectedAdbDevicesParsed.find((address) => device.addresses[0] === address.split(':')[0]);
-        const adbPort = prevDevice?.androidConfig?.adb?.port ?? (connectedMatch ? Number(connectedMatch.split(':')[1]) : undefined);
-        const windowsMacAddress = prevDevice?.windowsConfig?.macAddress;
+        const adbPort = connectedMatch ? Number(connectedMatch.split(':')[1]) : undefined;
 
         return {
-          // Tailscale API data
           ...device,
 
-          // tsync-specific data
           isHost: device.addresses[0] === process.env.HOST_IP,
-          battery: prevDevice?.battery,
 
           androidConfig: device.os === 'android' ? {
-            ...prevDevice?.androidConfig,
             adb: {
-              ...prevDevice?.androidConfig?.adb,
               port: adbPort,
             },
           } : undefined,
-
-          windowsConfig: device.os === 'windows' ? {
-            ...prevDevice?.windowsConfig,
-            macAddress: windowsMacAddress,
-          } : undefined,
         };
       });
-      
+
       return { devices: modifiedDevices };
     }
 

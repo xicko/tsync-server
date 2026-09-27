@@ -1,5 +1,5 @@
 /* eslint-disable prettier/prettier */
-import { Body, Controller, Get, HttpCode, HttpStatus, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, HttpCode, HttpStatus, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
 import { DevicesService } from './devices.service';
 import type { Request } from 'express';
 import type { BatteryStatus } from 'src/types/tailscale.interface';
@@ -29,6 +29,17 @@ export class DevicesController {
       tailscaleId,
       body.macAddress,
     );
+  }
+
+  @Patch('/:tailscaleId/battery-sync')
+  async setBatterySync(
+    @Param('tailscaleId') tailscaleId: string,
+    @Body() body: { enabled: boolean },
+  ) {
+    if (typeof body.enabled !== 'boolean') {
+      throw new BadRequestException('enabled must be a boolean');
+    }
+    return await this.devicesService.setBatterySync(tailscaleId, body.enabled);
   }
 
   @Patch('/:tailscaleId/battery')
