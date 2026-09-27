@@ -31,7 +31,7 @@ export class AdbService {
     const portNumber = Number(identifier);
     if (isNaN(portNumber)) throw new BadRequestException('Identifier must be a number');
 
-    const updated = await this.devicesDb.updateAdditionals(deviceId, {
+    const updated = await this.devicesDb.updateConfig(deviceId, {
       androidConfig: {
         adb: {
           port: identifier !== null ? portNumber : undefined,
@@ -39,7 +39,7 @@ export class AdbService {
       },
     });
     if (!updated) throw new InternalServerErrorException('Failed to update ADB identifier');
-    
+
     return updated;
   }
 }

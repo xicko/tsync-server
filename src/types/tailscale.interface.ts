@@ -34,6 +34,7 @@ export interface TailscaleDeviceAdditionals {
   isHost?: boolean;
   isThisDevice?: boolean;
 
+  batterySync?: boolean;
   battery?: BatteryStatus;
 
   androidConfig?: {

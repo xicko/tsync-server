@@ -14,7 +14,7 @@ export class TailscaleIpGuard implements CanActivate {
     const isLocal = ip === '127.0.0.1' || ip === '::1' || ip === 'localhost';
     if (isLocal) return true;
 
-    const devices = await this.devicesDb.findAll();
+    const devices = await this.devicesDb.findAllRaw();
     if (!devices) return false;
 
     const acceptedIps = devices.map((d) => d.addresses[0]);
@@ -33,7 +33,9 @@ export class TailscaleDeviceIpGuard implements CanActivate {
     const deviceId = (request.params.tailscaleId || request.params.deviceId) as string;
     if (!deviceId) return false;
 
-    const device = await this.devicesDb.findOne(deviceId);
+    const devices = await this.devicesDb.findAllRaw();
+    const device = devices?.find((d) => d.id === deviceId);
+    
     return !!device && device.addresses[0] === ip;
   }
 }

@@ -119,12 +119,23 @@ export class DevicesService {
     if (!device) throw new NotFoundException('Device not found');
     if (device.os !== 'windows') throw new BadRequestException('Device is not Windows OS');
 
-    const updated = await this.devicesDb.updateAdditionals(deviceId, {
+    const updated = await this.devicesDb.updateConfig(deviceId, {
       windowsConfig: {
-        macAddress: macAddress || undefined,
+        macAddress: macAddress || '',
       },
     });
     if (!updated) throw new InternalServerErrorException('Failed to update MAC address');
+    
+    return updated;
+  }
+
+  async setBatterySync(deviceId: string, enabled: boolean) {
+    const device = await this.devicesDb.findOne(deviceId);
+    if (!device) throw new NotFoundException('Device not found');
+
+    const updated = await this.devicesDb.updateConfig(deviceId, { batterySync: enabled });
+    if (!updated) throw new InternalServerErrorException('Failed to update battery sync');
+
     return updated;
   }
 
@@ -140,20 +151,17 @@ export class DevicesService {
     if (isInvalid) throw new BadRequestException('level (number) and isPlugged (boolean) are required');
 
     const os = device.os.toLowerCase() as 'linux' | 'android' | 'windows' | 'ios' | 'macos';
+    if (os !== 'android' && os !== 'macos') throw new BadRequestException(`Battery status is not supported for ${os}`);
 
-    if (os === 'android' || os === 'macos') {
-      const updated = await this.devicesDb.updateAdditionals(deviceId, {
-        battery: {
-          timestamp: body.timestamp ?? Date.now(),
-          level: body.level,
-          isPlugged: body.isPlugged,
-        },
-      });
-      if (!updated) throw new InternalServerErrorException('Failed to update battery status');
-      
-      return updated;
-    }
+    if (device.batterySync === false) throw new ConflictException('Battery sync is disabled for this device');
 
-    throw new BadRequestException(`Battery status is not supported for ${os}`);
+    const battery: BatteryStatus = {
+      timestamp: body.timestamp ?? Date.now(),
+      level: body.level,
+      isPlugged: body.isPlugged,
+    };
+    await this.devicesDb.setBattery(deviceId, battery);
+
+    return battery;
   }
 }
