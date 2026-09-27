@@ -28,13 +28,19 @@ export class AdbService {
     const device = await this.devicesDb.findOne(deviceId);
     if (!device) throw new NotFoundException('Device not found');
 
-    const portNumber = Number(identifier);
-    if (isNaN(portNumber)) throw new BadRequestException('Identifier must be a number');
+    let port: number | null;
+    if (identifier === null || identifier === '') {
+      port = null;
+    } else {
+      const portNumber = Number(identifier);
+      if (isNaN(portNumber)) throw new BadRequestException('Identifier must be a number');
+      port = portNumber;
+    }
 
     const updated = await this.devicesDb.updateConfig(deviceId, {
       androidConfig: {
         adb: {
-          port: identifier !== null ? portNumber : undefined,
+          port,
         },
       },
     });

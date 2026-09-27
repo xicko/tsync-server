@@ -17,8 +17,8 @@ export interface DeviceWindowsConfig {
 
 export interface DeviceConfigUpdate {
   batterySync?: boolean;
-  androidConfig?: { adb?: { port?: number } };
-  windowsConfig?: { macAddress?: string };
+  androidConfig?: { adb?: { port?: number | null } };
+  windowsConfig?: { macAddress?: string | null };
 }
 
 @Schema({ timestamps: true })
