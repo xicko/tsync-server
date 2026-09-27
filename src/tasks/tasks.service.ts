@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable prettier/prettier */
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { ConflictException, Injectable, InternalServerErrorException, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { Cron, CronExpression, SchedulerRegistry } from '@nestjs/schedule';
 import { CronJob } from 'cron';
 import { EventsGateway } from 'src/events/events.gateway';
@@ -142,15 +142,17 @@ export class TasksService implements OnModuleInit {
 
   async createCronJob(name: string, type: string, cronExpression: string, data: any, isActive: boolean) {
     const existing = await this.cronConfigModel.findOne({ name });
-    if (existing) throw new Error("Cron job with this name already exists");
-    
-    await this.cronConfigModel.create({ name, type, cronExpression, data, isActive });
-    if (isActive) {
-      this.registerJobByType(name, type, cronExpression, data);
-    }
+    if (existing) throw new ConflictException('Cron job with this name already exists');
+
+    const created = await this.cronConfigModel.create({ name, type, cronExpression, data, isActive });
+    if (isActive) this.registerJobByType(name, type, cronExpression, data);
+    return created;
   }
 
   async deleteCronJob(name: string) {
+    const existing = await this.cronConfigModel.findOne({ name });
+    if (!existing) throw new NotFoundException('Cron job not found');
+
     await this.stopCronJob(name);
     await this.cronConfigModel.deleteOne({ name });
     await this.cronLogModel.deleteMany({ name });
@@ -158,30 +160,30 @@ export class TasksService implements OnModuleInit {
 
   async updateCronJob(name: string, cronExpression: string, isActive: boolean, data?: any) {
     const config = await this.cronConfigModel.findOne({ name });
-    if (!config) throw new Error('Not found');
+    if (!config) throw new NotFoundException('Cron job not found');
 
     if (data !== undefined) config.data = data;
     config.cronExpression = cronExpression;
     config.isActive = isActive;
     await config.save();
-    
+
     await this.stopCronJob(name);
 
-    if (config.isActive) {
-      this.registerJobByType(name, config.type, config.cronExpression, config.data);
-    }
+    if (config.isActive) this.registerJobByType(name, config.type, config.cronExpression, config.data);
+
+    return config;
   }
-  
+
   async triggerCronJob(name: string) {
     const config = await this.cronConfigModel.findOne({ name });
-    if (!config) throw new Error('Not found');
+    if (!config) throw new NotFoundException('Cron job not found');
 
     let method: () => Promise<void>;
     switch(config.type) {
       case 'REMINDER': method = () => this.handleReminderCron(config.data); break;
       case 'COUNT': method = () => this.handleCountCron(config.data); break;
       case 'HEALTHCHECK': method = () => this.handleServiceHealthCheckCron(config.data); break;
-      default: throw new Error("Unknown type");
+      default: throw new InternalServerErrorException('Unknown cron type');
     }
 
     const startTime = Date.now();
