@@ -121,7 +121,7 @@ export class DevicesService {
 
     const updated = await this.devicesDb.updateConfig(deviceId, {
       windowsConfig: {
-        macAddress: macAddress || '',
+        macAddress: macAddress || null,
       },
     });
     if (!updated) throw new InternalServerErrorException('Failed to update MAC address');

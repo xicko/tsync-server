@@ -121,16 +121,28 @@ export class DevicesDB {
   ): Promise<DeviceConfig | null> {
     try {
       const set: Record<string, any> = {};
-      if (update.batterySync !== undefined) set['batterySync'] = update.batterySync;
-      if (update.androidConfig?.adb?.port !== undefined) set['androidConfig.adb.port'] = update.androidConfig.adb.port;
-      if (update.windowsConfig?.macAddress !== undefined) set['windowsConfig.macAddress'] = update.windowsConfig.macAddress;
+      const unset: Record<string, any> = {};
+
+      const apply = (key: string, value: unknown) => {
+        if (value === undefined) return;
+        if (value === null) unset[key] = '';
+        else set[key] = value;
+      };
+
+      apply('batterySync', update.batterySync);
+      apply('androidConfig.adb.port', update.androidConfig?.adb?.port);
+      apply('windowsConfig.macAddress', update.windowsConfig?.macAddress);
+
+      const ops: Record<string, any> = {};
+      if (Object.keys(set).length > 0) ops.$set = set;
+      if (Object.keys(unset).length > 0) ops.$unset = unset;
 
       return await this.deviceConfigModel
-        .findByIdAndUpdate(
-          id,
-          { $set: set },
-          { upsert: true, new: true, setDefaultsOnInsert: true },
-        )
+        .findByIdAndUpdate(id, ops, {
+          upsert: true,
+          new: true,
+          setDefaultsOnInsert: true,
+        })
         .lean();
     } catch (error) {
       this.logger.error(error);
