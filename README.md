@@ -20,7 +20,7 @@
 - **real-time events**: websocket-driven updates for instant device-to-client communication.
 - **android remote control**: integrated adb bridge for sending commands and screen interaction.
 - **smart task scheduling**: dynamic cron jobs for health checks, reminders, and data sync.
-- **multi-channel alerts**: notification dispatching via onesignal, ntfy, and telegram.
+- **multi-channel alerts**: notification dispatching via onesignal & ntfy.
 - **data persistence**: robust mongodb storage for system logs, device history, and user data.
 
 ---
@@ -35,7 +35,6 @@
 - **integrations**:
   - [tailscale](https://tailscale.com) api keys & tailnet id.
   - [onesignal](https://onesignal.com/) rest api keys.
-  - [telegram](https://my.telegram.org/) api id/hash for bot/client features.
 
 ---
 
@@ -49,7 +48,6 @@ create a `.env` file in the root based on `.env.example`:
 | **database** | `MONGO_URI`, `DB_NAME`, `REDIS_URL` |
 | **notifications** | `ONESIGNAL_APP_ID`, `ONESIGNAL_REST_KEY`, `NTFY_URL`, `NTFY_TOPIC` |
 | **adb/remote** | `HOST_IP`, `WOL_SERVICE_PORT` |
-| **telegram** | `TELEGRAM_API_ID`, `TELEGRAM_API_HASH`, `TELEGRAM_SESSION` |
 
 ---
 
@@ -62,17 +60,12 @@ create a `.env` file in the root based on `.env.example`:
    npm install
    ```
 
-2. **generate telegram session** (optional)
-   ```bash
-   npm run telegram:session
-   ```
-
-3. **launch development server**
+2. **launch development server**
    ```bash
    npm run start:dev
    ```
 
-4. **production build**
+3. **production build**
    ```bash
    npm run build
    npm run start:prod
